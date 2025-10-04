@@ -2,7 +2,11 @@
 Test script to demonstrate getting all 21 hand landmarks
 """
 
-from camera_gesture_detection import RealTimeGestureDetector
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from hand_landmarks.camera_gesture_detection import RealTimeGestureDetector
 import json
 import time
 

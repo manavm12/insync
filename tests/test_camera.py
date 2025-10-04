@@ -2,9 +2,12 @@
 Quick test script to verify camera connection and hand detection
 """
 
-from camera_gesture_detection import RealTimeGestureDetector, quick_capture
-import json
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+from hand_landmarks.camera_gesture_detection import RealTimeGestureDetector
+from hand_landmarks.hand_landmarks_detector import HandLandmarksDetector
 
 def test_camera_connection():
     """Test if camera can be accessed."""

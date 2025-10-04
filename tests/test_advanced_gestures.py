@@ -3,8 +3,12 @@ Test script for advanced gesture recognition
 Demonstrates the new gesture detection capabilities including thumbs up/down, numbers, etc.
 """
 
-from camera_gesture_detection import RealTimeGestureDetector
-from gesture_recognition import GestureRecognizer, recognize_advanced_gestures
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from hand_landmarks.camera_gesture_detection import RealTimeGestureDetector
+from hand_landmarks.gesture_recognition import GestureRecognizer, recognize_advanced_gestures
 import time
 
 

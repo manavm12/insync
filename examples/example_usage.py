@@ -10,7 +10,11 @@ This script demonstrates various ways to use the HandLandmarksDetector class:
 
 import cv2
 import numpy as np
-from hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from hand_landmarks.hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
 import json
 
 

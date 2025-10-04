@@ -5,8 +5,8 @@ This script connects to your camera and detects hand gestures, returning landmar
 
 import cv2
 import numpy as np
-from hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
-from gesture_recognition import GestureRecognizer, recognize_advanced_gestures
+from .hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
+from .gesture_recognition import GestureRecognizer, recognize_advanced_gestures
 import json
 import time
 
