@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from typing import List, Optional
 from .hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
+from .holistic_detector import HolisticDetector
 from .gesture_recognition import GestureRecognizer, recognize_advanced_gestures
 import json
 import time
@@ -14,19 +15,34 @@ import time
 class RealTimeGestureDetector:
     """Real-time gesture detection from camera with landmark output."""
     
-    def __init__(self, camera_id=0):
+    def __init__(self, camera_id=0, use_holistic=True):
         """
         Initialize the real-time gesture detector.
         
         Args:
             camera_id: Camera device ID (usually 0 for default camera)
+            use_holistic: If True, use Holistic detector (hand + face tracking)
+                         for improved accuracy on signs like THANK YOU
         """
         self.camera_id = camera_id
-        self.detector = HandLandmarksDetector(
-            max_num_hands=2,
-            min_detection_confidence=0.7,
-            min_tracking_confidence=0.5
-        )
+        self.use_holistic = use_holistic
+        
+        if use_holistic:
+            # Use Holistic detector for hand + face tracking
+            self.detector = HolisticDetector(
+                min_detection_confidence=0.7,
+                min_tracking_confidence=0.5
+            )
+            print("✨ Using Holistic detector (Hand + Face tracking enabled)")
+        else:
+            # Use standard hand detector
+            self.detector = HandLandmarksDetector(
+                max_num_hands=2,
+                min_detection_confidence=0.7,
+                min_tracking_confidence=0.5
+            )
+            print("✋ Using standard hand detector")
+        
         self.gesture_recognizer = GestureRecognizer()
         self.cap = None
         self.running = False

@@ -47,13 +47,16 @@ class GestureRecognizer:
         # Initialize gesture interpreter factory
         self.interpreter_factory = GestureInterpreterFactory()
     
-    def recognize_gesture(self, landmarks: List[Dict], handedness: str = "Right") -> str:
+    def recognize_gesture(self, landmarks: List[Dict], handedness: str = "Right",
+                         face_ref: Optional[Dict] = None) -> str:
         """
         Recognize gesture from hand landmarks.
         
         Args:
             landmarks: List of 21 hand landmarks with x, y, z coordinates
             handedness: "Left" or "Right" hand
+            face_ref: Optional face reference points dict with keys:
+                     'nose', 'mouth', 'chin', 'forehead'
             
         Returns:
             String describing the recognized gesture
@@ -67,8 +70,8 @@ class GestureRecognizer:
         # Count extended fingers
         fingers_count = sum(fingers_up)
         
-        # Recognize specific gestures
-        gesture = self._classify_gesture(landmarks, fingers_up, fingers_count, handedness)
+        # Recognize specific gestures with face reference
+        gesture = self._classify_gesture(landmarks, fingers_up, fingers_count, handedness, face_ref)
         
         return gesture
     
@@ -102,7 +105,8 @@ class GestureRecognizer:
         return fingers_up
     
     def _classify_gesture(self, landmarks: List[Dict], fingers_up: List[bool], 
-                         fingers_count: int, handedness: str) -> str:
+                         fingers_count: int, handedness: str, 
+                         face_ref: Optional[Dict] = None) -> str:
         """
         Classify the gesture based on finger states using specialized interpreters.
         
@@ -111,12 +115,13 @@ class GestureRecognizer:
             fingers_up: Which fingers are extended
             fingers_count: Total number of extended fingers
             handedness: Hand orientation
+            face_ref: Optional face reference points
             
         Returns:
             Gesture name
         """
         return self.interpreter_factory.interpret_gesture(
-            landmarks, fingers_up, fingers_count, handedness
+            landmarks, fingers_up, fingers_count, handedness, face_ref
         )
     
     
@@ -219,6 +224,7 @@ def recognize_advanced_gestures(gesture_data: Dict) -> List[Dict]:
     
     Args:
         gesture_data: Gesture data from HandLandmarksDetector.get_gesture_landmarks()
+                     Can include 'face_reference_point', 'face_mouth_point', etc.
         
     Returns:
         List of dictionaries with detailed gesture information
@@ -226,13 +232,23 @@ def recognize_advanced_gestures(gesture_data: Dict) -> List[Dict]:
     recognizer = GestureRecognizer()
     results = []
     
+    # Extract face reference points if available
+    face_ref = None
+    if gesture_data.get('face_detected'):
+        face_ref = {
+            'nose': gesture_data.get('face_reference_point'),
+            'mouth': gesture_data.get('face_mouth_point'),
+            'chin': gesture_data.get('face_chin_point'),
+            'forehead': gesture_data.get('face_forehead_point')
+        }
+    
     for hand_data in gesture_data.get('gestures', []):
         landmarks = hand_data.get('all_landmarks', [])
         handedness = hand_data.get('handedness', 'Right')
         
         if len(landmarks) == 21:
-            # Main gesture recognition
-            gesture = recognizer.recognize_gesture(landmarks, handedness)
+            # Main gesture recognition with face reference
+            gesture = recognizer.recognize_gesture(landmarks, handedness, face_ref)
             
             # Additional analysis
             finger_states = recognizer.get_finger_states(landmarks, handedness)
@@ -245,7 +261,8 @@ def recognize_advanced_gestures(gesture_data: Dict) -> List[Dict]:
                 'gesture': gesture,
                 'number': number,
                 'finger_states': finger_states,
-                'orientation': orientation
+                'orientation': orientation,
+                'face_detected': gesture_data.get('face_detected', False)
             }
             
             results.append(result)
