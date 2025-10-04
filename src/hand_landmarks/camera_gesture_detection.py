@@ -8,6 +8,7 @@ import numpy as np
 from typing import List, Optional
 from .hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
 from .gesture_recognition import GestureRecognizer, recognize_advanced_gestures
+from .gesture_translator import fix_sentence
 import json
 import time
 
