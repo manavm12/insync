@@ -19,7 +19,7 @@ def test_camera_connection():
         
         # Quick capture test
         print("📸 Taking a quick capture...")
-        landmarks = quick_capture()
+        landmarks = detector.get_current_landmarks()
         
         if landmarks:
             print("✅ Hand detection system working!")

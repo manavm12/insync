@@ -18,7 +18,7 @@ source hand_detection_env/bin/activate
 pip install -r requirements.txt
 
 # Start detecting!
-python main.py
+python camera_gesture_detection.py
 ```
 
 ## Features
@@ -30,40 +30,6 @@ python main.py
 - **Basic Gesture Recognition**: Built-in recognition for common gestures
 - **Multiple Hand Support**: Can detect and track multiple hands simultaneously
 - **Export Capabilities**: Save landmark data and annotated images/videos
-
-## 📁 Project Structure
-
-```
-hand-landmarks-detection/
-├── src/
-│   └── hand_landmarks/
-│       ├── __init__.py                    # Package initialization
-│       ├── hand_landmarks_detector.py     # Core detection module
-│       ├── gesture_recognition.py         # Advanced gesture recognition
-│       └── camera_gesture_detection.py   # Real-time camera processing
-├── tests/
-│   ├── __init__.py                       # Test package init
-│   ├── test_camera.py                    # Camera testing
-│   ├── test_all_landmarks.py             # Landmark testing
-│   └── test_advanced_gestures.py         # Gesture testing
-├── examples/
-│   ├── __init__.py                       # Examples package init
-│   └── example_usage.py                  # Usage examples
-├── docs/
-│   ├── CONTRIBUTING.md                   # Contribution guidelines
-│   ├── CHANGELOG.md                      # Version history
-│   └── PROJECT_STRUCTURE.md              # Detailed structure
-├── scripts/
-│   ├── activate_env.sh                   # Environment activation
-│   ├── git_setup.sh                      # Git initialization
-│   └── git_ready_summary.sh              # Git status summary
-├── main.py                               # Main entry point
-├── requirements.txt                      # Dependencies
-├── setup.py                              # Package setup
-├── README.md                             # This file
-├── LICENSE                               # MIT License
-└── .gitignore                            # Git ignore rules
-```
 
 ## Installation
 
@@ -92,7 +58,7 @@ pip install mediapipe>=0.10.0 opencv-python>=4.8.0 numpy>=1.21.0
 ### Basic Usage
 
 ```python
-from src.hand_landmarks import HandLandmarksDetector
+from hand_landmarks_detector import HandLandmarksDetector
 import cv2
 
 # Initialize detector
@@ -270,20 +236,7 @@ def custom_gesture_detector(landmarks):
 Run the example script to see all features in action:
 
 ```bash
-python examples/example_usage.py
-```
-
-Or run specific tests:
-
-```bash
-# Test camera functionality
-python tests/test_camera.py
-
-# Test all 21 landmarks
-python tests/test_all_landmarks.py
-
-# Test advanced gesture recognition
-python tests/test_advanced_gestures.py
+python example_usage.py
 ```
 
 The example script includes:
