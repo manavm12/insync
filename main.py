@@ -26,7 +26,7 @@ def main():
         detector = RealTimeGestureDetector()
         detector.start_detection(
             show_video=True,
-            print_landmarks=True,
+            print_landmarks=False,
             save_to_file=False
         )
     except KeyboardInterrupt:
