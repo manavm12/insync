@@ -5,12 +5,14 @@ This script connects to your camera and detects hand gestures, returning landmar
 
 import cv2
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Dict
 from .hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
 from .gesture_recognition import GestureRecognizer, recognize_advanced_gestures
 from .gesture_translator import fix_sentence
 import json
 import time
+import threading
+from collections import deque
 
 class RealTimeGestureDetector:
     """Real-time gesture detection from camera with landmark output."""
@@ -31,8 +33,22 @@ class RealTimeGestureDetector:
         self.gesture_recognizer = GestureRecognizer()
         self.cap = None
         self.running = False
-        self.message_buffer: List[str] = []
+        
+        # Sentence building and translation
+        self.current_sentence: List[str] = []
         self.last_gesture: Optional[str] = None
+        self.last_gesture_time: float = 0
+        self.sentence_timeout: float = 5.0  # 5 seconds to complete a sentence
+        
+        # Translation queue and results
+        self.sentence_queue: deque = deque()
+        self.translated_sentences: List[Dict] = []
+        self.translation_thread: Optional[threading.Thread] = None
+        self.translation_running: bool = False
+        
+        # Display settings
+        self.show_raw_gestures: bool = True
+        self.show_translations: bool = True
         
     def start_detection(self, show_video=True, print_landmarks=True, save_to_file=False):
         """
@@ -60,9 +76,14 @@ class RealTimeGestureDetector:
         print("  'q' - Quit")
         print("  's' - Save current landmarks to file")
         print("  'p' - Toggle landmark printing")
+        print("  't' - Toggle translation display")
+        print("  'r' - Toggle raw gesture display")
+        print("  'c' - Clear all sentences and translations")
+        print("  'n' - Force new sentence (don't wait for timeout)")
         print("  SPACE - Capture and analyze current frame")
         
-        self._reset_message_buffer()
+        self._reset_sentence_system()
+        self._start_translation_thread()
         self.running = True
         frame_count = 0
         
@@ -85,7 +106,8 @@ class RealTimeGestureDetector:
                 # Use advanced gesture recognition
                 advanced_gestures = recognize_advanced_gestures(gesture_data)
                 basic_gestures = recognize_basic_gestures(gesture_data)
-                self._update_message_buffer(advanced_gestures)
+                self._update_sentence_buffer(advanced_gestures)
+                self._check_sentence_timeout()
                 
                 # Process and display results
                 if results['hands_detected'] > 0:
@@ -109,6 +131,16 @@ class RealTimeGestureDetector:
                 elif key == ord('p'):
                     print_landmarks = not print_landmarks
                     print(f"Landmark printing: {'ON' if print_landmarks else 'OFF'}")
+                elif key == ord('t'):
+                    self.show_translations = not self.show_translations
+                    print(f"Translation display: {'ON' if self.show_translations else 'OFF'}")
+                elif key == ord('r'):
+                    self.show_raw_gestures = not self.show_raw_gestures
+                    print(f"Raw gesture display: {'ON' if self.show_raw_gestures else 'OFF'}")
+                elif key == ord('c'):
+                    self._clear_all_sentences()
+                elif key == ord('n'):
+                    self._force_new_sentence()
                 elif key == ord(' '):
                     self._detailed_analysis_advanced(results, advanced_gestures)
                 
@@ -184,8 +216,8 @@ class RealTimeGestureDetector:
 
         return formatted_data
 
-    def _update_message_buffer(self, advanced_gestures):
-        """Append a new gesture word when it changes from the previous frame."""
+    def _update_sentence_buffer(self, advanced_gestures):
+        """Add new gesture word to current sentence when it changes."""
         if not advanced_gestures:
             return
 
@@ -196,23 +228,117 @@ class RealTimeGestureDetector:
             return
 
         if new_word != self.last_gesture:
-            self.message_buffer.append(new_word)
+            self.current_sentence.append(new_word)
             self.last_gesture = new_word
-            print(f"📝 Captured gesture word: {new_word}")
-            print(f"🧾 Current message: {self.get_message()}")
+            self.last_gesture_time = time.time()
+            
+            if self.show_raw_gestures:
+                print(f"📝 Gesture: {new_word}")
+                print(f"🔤 Current sentence: {' '.join(self.current_sentence)}")
 
-    def _reset_message_buffer(self):
-        """Clear stored gesture words and reset the last gesture tracker."""
-        self.message_buffer.clear()
+    def _check_sentence_timeout(self):
+        """Check if sentence should be completed due to timeout."""
+        if not self.current_sentence:
+            return
+            
+        current_time = time.time()
+        if current_time - self.last_gesture_time >= self.sentence_timeout:
+            self._complete_sentence()
+
+    def _complete_sentence(self):
+        """Complete current sentence and queue it for translation."""
+        if not self.current_sentence:
+            return
+            
+        sentence_text = ' '.join(self.current_sentence)
+        print(f"\n✅ Sentence completed: '{sentence_text}'")
+        
+        # Add to translation queue
+        sentence_data = {
+            'id': len(self.translated_sentences) + len(self.sentence_queue) + 1,
+            'raw_text': sentence_text,
+            'timestamp': time.time(),
+            'status': 'queued'
+        }
+        
+        self.sentence_queue.append(sentence_data)
+        print(f"📤 Queued for translation (Queue size: {len(self.sentence_queue)})")
+        
+        # Reset for next sentence
+        self.current_sentence.clear()
         self.last_gesture = None
 
-    def get_message(self) -> str:
-        """Return the accumulated gesture words as a space-separated string."""
-        return " ".join(self.message_buffer)
+    def _force_new_sentence(self):
+        """Force completion of current sentence without waiting for timeout."""
+        if self.current_sentence:
+            print("🔄 Forcing sentence completion...")
+            self._complete_sentence()
+        else:
+            print("ℹ️  No current sentence to complete")
 
-    def reset_message(self) -> None:
-        """Public helper to clear the accumulated gesture message."""
-        self._reset_message_buffer()
+    def _clear_all_sentences(self):
+        """Clear all sentences and translations."""
+        self.current_sentence.clear()
+        self.sentence_queue.clear()
+        self.translated_sentences.clear()
+        self.last_gesture = None
+        print("🗑️  Cleared all sentences and translations")
+
+    def _reset_sentence_system(self):
+        """Reset the entire sentence system."""
+        self._clear_all_sentences()
+        self.translation_running = False
+
+    def _start_translation_thread(self):
+        """Start the background translation thread."""
+        self.translation_running = True
+        self.translation_thread = threading.Thread(target=self._translation_worker, daemon=True)
+        self.translation_thread.start()
+        print("🤖 Translation service started")
+
+    def _translation_worker(self):
+        """Background worker to process translation queue."""
+        while self.translation_running:
+            try:
+                if self.sentence_queue:
+                    sentence_data = self.sentence_queue.popleft()
+                    
+                    print(f"🔄 Translating: '{sentence_data['raw_text']}'")
+                    sentence_data['status'] = 'translating'
+                    
+                    # Translate using OpenAI
+                    translated_text = fix_sentence(sentence_data['raw_text'])
+                    
+                    sentence_data['translated_text'] = translated_text
+                    sentence_data['status'] = 'completed'
+                    sentence_data['translation_time'] = time.time()
+                    
+                    self.translated_sentences.append(sentence_data)
+                    
+                    if self.show_translations:
+                        print(f"✨ Translation #{sentence_data['id']}: '{translated_text}'")
+                    
+                    # Keep only last 10 translations to save memory
+                    if len(self.translated_sentences) > 10:
+                        self.translated_sentences.pop(0)
+                
+                time.sleep(0.1)  # Small delay to prevent busy waiting
+                
+            except Exception as e:
+                print(f"❌ Translation error: {e}")
+                if self.sentence_queue:
+                    failed_sentence = self.sentence_queue.popleft()
+                    failed_sentence['status'] = 'failed'
+                    failed_sentence['error'] = str(e)
+                    self.translated_sentences.append(failed_sentence)
+
+    def get_current_sentence(self) -> str:
+        """Get the current sentence being built."""
+        return ' '.join(self.current_sentence)
+
+    def get_recent_translations(self, count: int = 5) -> List[Dict]:
+        """Get the most recent translations."""
+        return self.translated_sentences[-count:] if self.translated_sentences else []
 
     def _print_landmarks_advanced(self, results, advanced_gestures, frame_count):
         """Print landmark coordinates and advanced gesture info to console."""
@@ -285,17 +411,32 @@ class RealTimeGestureDetector:
                        (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
             y_offset += 35
         
+        # Add sentence and translation info
+        if self.show_raw_gestures and self.current_sentence:
+            current_text = f"Current: {' '.join(self.current_sentence)}"
+            cv2.putText(annotated_frame, current_text, 
+                       (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+            y_offset += 25
+        
+        if self.show_translations and self.translated_sentences:
+            recent = self.translated_sentences[-3:]  # Show last 3 translations
+            for i, trans in enumerate(recent):
+                if trans['status'] == 'completed':
+                    text = f"#{trans['id']}: {trans['translated_text']}"
+                    cv2.putText(annotated_frame, text, 
+                               (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                    y_offset += 20
+        
         # Add instructions
         instructions = [
-            "Press 'q' to quit",
-            "Press 's' to save landmarks", 
-            "Press SPACE for detailed analysis"
+            "q:quit s:save t:toggle-trans r:toggle-raw",
+            "c:clear n:new-sentence SPACE:analysis"
         ]
         
         for i, instruction in enumerate(instructions):
             cv2.putText(annotated_frame, instruction, 
-                       (10, annotated_frame.shape[0] - 60 + i*20), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                       (10, annotated_frame.shape[0] - 40 + i*20), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
         
         return annotated_frame
     
@@ -482,6 +623,12 @@ class RealTimeGestureDetector:
     def _cleanup(self):
         """Clean up resources."""
         self.running = False
+        self.translation_running = False
+        
+        # Wait for translation thread to finish
+        if self.translation_thread and self.translation_thread.is_alive():
+            self.translation_thread.join(timeout=2.0)
+        
         if self.cap:
             self.cap.release()
         cv2.destroyAllWindows()
