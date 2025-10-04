@@ -5,11 +5,11 @@ This script connects to your camera and detects hand gestures, returning landmar
 
 import cv2
 import numpy as np
+from typing import List, Optional
 from .hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
 from .gesture_recognition import GestureRecognizer, recognize_advanced_gestures
 import json
 import time
-
 
 class RealTimeGestureDetector:
     """Real-time gesture detection from camera with landmark output."""
@@ -30,6 +30,8 @@ class RealTimeGestureDetector:
         self.gesture_recognizer = GestureRecognizer()
         self.cap = None
         self.running = False
+        self.message_buffer: List[str] = []
+        self.last_gesture: Optional[str] = None
         
     def start_detection(self, show_video=True, print_landmarks=True, save_to_file=False):
         """
@@ -59,6 +61,7 @@ class RealTimeGestureDetector:
         print("  'p' - Toggle landmark printing")
         print("  SPACE - Capture and analyze current frame")
         
+        self._reset_message_buffer()
         self.running = True
         frame_count = 0
         
@@ -81,6 +84,7 @@ class RealTimeGestureDetector:
                 # Use advanced gesture recognition
                 advanced_gestures = recognize_advanced_gestures(gesture_data)
                 basic_gestures = recognize_basic_gestures(gesture_data)
+                self._update_message_buffer(advanced_gestures)
                 
                 # Process and display results
                 if results['hands_detected'] > 0:
@@ -151,13 +155,13 @@ class RealTimeGestureDetector:
         landmarks_data = self.get_current_landmarks()
         if not landmarks_data or landmarks_data['landmarks']['hands_detected'] == 0:
             return None
-        
+
         formatted_data = {
             'timestamp': landmarks_data['timestamp'],
             'hands_count': landmarks_data['landmarks']['hands_detected'],
             'hands': []
         }
-        
+
         for hand in landmarks_data['landmarks']['hands']:
             hand_data = {
                 'handedness': hand['handedness'],
@@ -176,13 +180,43 @@ class RealTimeGestureDetector:
                 }
             
             formatted_data['hands'].append(hand_data)
-        
+
         return formatted_data
-    
+
+    def _update_message_buffer(self, advanced_gestures):
+        """Append a new gesture word when it changes from the previous frame."""
+        if not advanced_gestures:
+            return
+
+        primary = advanced_gestures[0]
+        new_word = primary.get('gesture') if isinstance(primary, dict) else None
+
+        if not new_word or new_word == 'Unknown Gesture':
+            return
+
+        if new_word != self.last_gesture:
+            self.message_buffer.append(new_word)
+            self.last_gesture = new_word
+            print(f"📝 Captured gesture word: {new_word}")
+            print(f"🧾 Current message: {self.get_message()}")
+
+    def _reset_message_buffer(self):
+        """Clear stored gesture words and reset the last gesture tracker."""
+        self.message_buffer.clear()
+        self.last_gesture = None
+
+    def get_message(self) -> str:
+        """Return the accumulated gesture words as a space-separated string."""
+        return " ".join(self.message_buffer)
+
+    def reset_message(self) -> None:
+        """Public helper to clear the accumulated gesture message."""
+        self._reset_message_buffer()
+
     def _print_landmarks_advanced(self, results, advanced_gestures, frame_count):
         """Print landmark coordinates and advanced gesture info to console."""
         print(f"\n📊 Frame {frame_count} - Hands: {results['hands_detected']}")
-        
+
         for i, hand in enumerate(results['hands']):
             print(f"\n🖐️  Hand {i+1} ({hand['handedness']}) - Confidence: {hand['handedness_confidence']:.3f}")
             
