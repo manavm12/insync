@@ -255,12 +255,14 @@ class RealTimeGestureDetector:
     def _update_sentence_buffer(self, advanced_gestures):
         """Add new gesture word to current sentence when it changes."""
         if not advanced_gestures:
+            self._append_unknown_sign()
             return
 
         primary = advanced_gestures[0]
         new_word = primary.get('gesture') if isinstance(primary, dict) else None
 
         if not new_word or new_word == 'Unknown Gesture':
+            self._append_unknown_sign()
             return
 
         if new_word != self.last_gesture:
@@ -271,6 +273,19 @@ class RealTimeGestureDetector:
             if self.show_raw_gestures:
                 print(f"📝 Gesture: {new_word}")
                 print(f"🔤 Current sentence: {' '.join(self.current_sentence)}")
+
+    def _append_unknown_sign(self):
+        """Record an unknown sign placeholder when recognition fails."""
+        if self.last_gesture == 'Unknown Sign':
+            return
+
+        self.current_sentence.append('Unknown Sign')
+        self.last_gesture = 'Unknown Sign'
+        self.last_gesture_time = time.time()
+
+        if self.show_raw_gestures:
+            print("📝 Gesture: Unknown Sign")
+            print(f"🔤 Current sentence: {' '.join(self.current_sentence)}")
 
     def _check_sentence_timeout(self):
         """Check if sentence should be completed due to timeout."""
@@ -502,6 +517,11 @@ class RealTimeGestureDetector:
     def get_current_sentence(self) -> str:
         """Get the current sentence being built."""
         return ' '.join(self.current_sentence)
+
+    def append_unknown_sign(self) -> str:
+        """Expose manual recording of an unrecognized sign."""
+        self._append_unknown_sign()
+        return 'Unknown Sign'
 
     def get_recent_translations(self, count: int = 5) -> List[Dict]:
         """Get the most recent translations."""

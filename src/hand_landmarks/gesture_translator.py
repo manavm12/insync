@@ -28,33 +28,36 @@ def fix_sentence(broken_text: str, api_key: Optional[str] = None) -> str:
     if not api_key:
         return "Error: OpenAI API key not found. Set OPENAI_API_KEY environment variable."
     
-    # Initialize OpenAI client
     client = OpenAI(api_key=api_key)
     
     if not broken_text or broken_text.strip() == "":
         return "No text to translate"
     
     # System prompt for text correction
-    system_prompt = """You are a text correction assistant. Fix incomplete or broken sentences into proper English.
+    system_prompt = """
+        You are a Sign Language to English Translator.
+        Your task is to take input sequences of recognized sign language gestures (which may include multiple possible translations for each sign) and output a fully spoken English sentence.
 
-Rules:
-1. Correct grammar and add missing words (articles, prepositions, etc.)
-2. Capitalize properly
-3. Keep the original meaning
-4. Make it sound natural
-5. Keep it simple and concise
+        Rules:
+        1. Disambiguate meanings: Choose the translation that best fits the sentence context.
+        2. Fix grammar: Add missing words (articles, prepositions, auxiliary verbs, etc.).
+        3. Capitalize properly: Start sentences with a capital letter and use correct punctuation.
+        4. Preserve meaning: Keep the original intent of the signed phrase.
+        5. Sound natural: Write sentences that flow like natural spoken English.
+        6. Keep it concise: Avoid redundant or literal translations that feel awkward.
 
-Examples:
-Input: "i write pen"
-Output: "I write with a pen"
+        Examples:
 
-Input: "she go store buy milk"
-Output: "She goes to the store to buy milk"
+        Input:
+        ASL: BAD / Thumbs Down
+        ASL: GUN/ VIOLENCE
+        ASL: PEACE
+        ASL: GOOD / Thumbs Up
 
-Input: "we eat food good"
-Output: "We eat good food"
+        Output:
+        Violence is bad. Peace is good.
+    """
 
-Fix the following text:"""
     
     try:
         response = client.chat.completions.create(
