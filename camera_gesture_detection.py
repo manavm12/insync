@@ -6,6 +6,7 @@ This script connects to your camera and detects hand gestures, returning landmar
 import cv2
 import numpy as np
 from hand_landmarks_detector import HandLandmarksDetector, recognize_basic_gestures
+from gesture_recognition import GestureRecognizer, recognize_advanced_gestures
 import json
 import time
 
@@ -26,6 +27,7 @@ class RealTimeGestureDetector:
             min_detection_confidence=0.7,
             min_tracking_confidence=0.5
         )
+        self.gesture_recognizer = GestureRecognizer()
         self.cap = None
         self.running = False
         
@@ -75,19 +77,22 @@ class RealTimeGestureDetector:
                 
                 # Get gesture data
                 gesture_data = self.detector.get_gesture_landmarks(frame)
-                gestures = recognize_basic_gestures(gesture_data)
+                
+                # Use advanced gesture recognition
+                advanced_gestures = recognize_advanced_gestures(gesture_data)
+                basic_gestures = recognize_basic_gestures(gesture_data)
                 
                 # Process and display results
                 if results['hands_detected'] > 0:
                     if print_landmarks:
-                        self._print_landmarks(results, gestures, frame_count)
+                        self._print_landmarks_advanced(results, advanced_gestures, frame_count)
                     
                     if save_to_file:
-                        self._save_landmarks_to_file(results, gestures, frame_count)
+                        self._save_landmarks_to_file(results, advanced_gestures, frame_count)
                 
                 # Draw landmarks and info on frame
                 if show_video:
-                    annotated_frame = self._annotate_frame(frame, results, gestures)
+                    annotated_frame = self._annotate_frame_advanced(frame, results, advanced_gestures)
                     cv2.imshow('Real-time Hand Gesture Detection', annotated_frame)
                 
                 # Handle key presses
@@ -95,12 +100,12 @@ class RealTimeGestureDetector:
                 if key == ord('q'):
                     break
                 elif key == ord('s'):
-                    self._save_current_landmarks(results, gestures)
+                    self._save_current_landmarks(results, advanced_gestures)
                 elif key == ord('p'):
                     print_landmarks = not print_landmarks
                     print(f"Landmark printing: {'ON' if print_landmarks else 'OFF'}")
                 elif key == ord(' '):
-                    self._detailed_analysis(results, gestures)
+                    self._detailed_analysis_advanced(results, advanced_gestures)
                 
                 frame_count += 1
                 
@@ -174,8 +179,32 @@ class RealTimeGestureDetector:
         
         return formatted_data
     
+    def _print_landmarks_advanced(self, results, advanced_gestures, frame_count):
+        """Print landmark coordinates and advanced gesture info to console."""
+        print(f"\n📊 Frame {frame_count} - Hands: {results['hands_detected']}")
+        
+        for i, hand in enumerate(results['hands']):
+            print(f"\n🖐️  Hand {i+1} ({hand['handedness']}) - Confidence: {hand['handedness_confidence']:.3f}")
+            
+            # Advanced gesture information
+            if i < len(advanced_gestures):
+                gesture_info = advanced_gestures[i]
+                print(f"   🎯 Gesture: {gesture_info['gesture']}")
+                if gesture_info['number'] is not None:
+                    print(f"   🔢 Number: {gesture_info['number']}")
+                
+                # Finger states
+                finger_states = gesture_info['finger_states']
+                fingers_up = finger_states['fingers_up']
+                print(f"   ✋ Fingers: {' '.join([name if up else '❌' for name, up in zip(finger_states['finger_names'], fingers_up)])}")
+            
+            # Print ALL 21 landmarks
+            print("   📍 All Hand Landmarks (x, y, z):")
+            for idx, landmark in enumerate(hand['landmarks']):
+                print(f"      {idx:2d} - {landmark['name']:18s}: ({landmark['x']:.4f}, {landmark['y']:.4f}, {landmark['z']:.4f})")
+    
     def _print_landmarks(self, results, gestures, frame_count):
-        """Print landmark coordinates to console."""
+        """Print landmark coordinates to console (basic version)."""
         print(f"\n📊 Frame {frame_count} - Hands: {results['hands_detected']}")
         
         for i, hand in enumerate(results['hands']):
@@ -189,9 +218,55 @@ class RealTimeGestureDetector:
             for idx, landmark in enumerate(hand['landmarks']):
                 print(f"      {idx:2d} - {landmark['name']:18s}: ({landmark['x']:.4f}, {landmark['y']:.4f}, {landmark['z']:.4f})")
     
-    def _annotate_frame(self, frame, results, gestures):
-        """Add annotations to the video frame."""
-        annotated_frame = self.detector.draw_landmarks(frame, results)
+    def _annotate_frame_advanced(self, image, results, advanced_gestures):
+        """Add advanced annotations to the video frame."""
+        annotated_frame = self.detector.draw_landmarks(image, results)
+        
+        # Add detection info
+        cv2.putText(annotated_frame, f"Hands: {results['hands_detected']}", 
+                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        
+        # Add advanced gesture info
+        y_offset = 70
+        for i, gesture_info in enumerate(advanced_gestures):
+            gesture = gesture_info['gesture']
+            color = (0, 255, 255) if gesture != "Unknown Gesture" else (0, 0, 255)
+            
+            # Main gesture
+            cv2.putText(annotated_frame, f"Hand {i+1}: {gesture}", 
+                       (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+            y_offset += 25
+            
+            # Number if detected
+            if gesture_info['number'] is not None:
+                cv2.putText(annotated_frame, f"Number: {gesture_info['number']}", 
+                           (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                y_offset += 25
+            
+            # Finger states
+            finger_states = gesture_info['finger_states']
+            fingers_text = f"Fingers: {finger_states['fingers_count']}/5"
+            cv2.putText(annotated_frame, fingers_text, 
+                       (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+            y_offset += 35
+        
+        # Add instructions
+        instructions = [
+            "Press 'q' to quit",
+            "Press 's' to save landmarks", 
+            "Press SPACE for detailed analysis"
+        ]
+        
+        for i, instruction in enumerate(instructions):
+            cv2.putText(annotated_frame, instruction, 
+                       (10, annotated_frame.shape[0] - 60 + i*20), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        return annotated_frame
+    
+    def _annotate_frame(self, image, results, gestures):
+        """Add annotations to the video frame (basic version)."""
+        annotated_frame = self.detector.draw_landmarks(image, results)
         
         # Add detection info
         cv2.putText(annotated_frame, f"Hands: {results['hands_detected']}", 
@@ -249,6 +324,71 @@ class RealTimeGestureDetector:
             json.dump(data, f, indent=2)
         
         print(f"💾 Landmarks saved to: {filename}")
+    
+    def _detailed_analysis_advanced(self, results, advanced_gestures):
+        """Perform detailed analysis of current frame with advanced gesture info."""
+        print("\n" + "="*60)
+        print("🔍 ADVANCED DETAILED LANDMARK ANALYSIS")
+        print("="*60)
+        
+        if results['hands_detected'] == 0:
+            print("❌ No hands detected")
+            return
+        
+        for i, hand in enumerate(results['hands']):
+            print(f"\n🖐️  HAND {i+1} DETAILED ANALYSIS")
+            print(f"   Handedness: {hand['handedness']}")
+            print(f"   Confidence: {hand['handedness_confidence']:.4f}")
+            
+            if i < len(advanced_gestures):
+                gesture_info = advanced_gestures[i]
+                print(f"   🎯 Gesture: {gesture_info['gesture']}")
+                if gesture_info['number'] is not None:
+                    print(f"   🔢 Number: {gesture_info['number']}")
+                
+                # Detailed finger analysis
+                finger_states = gesture_info['finger_states']
+                print(f"   ✋ Fingers Extended: {finger_states['fingers_count']}/5")
+                for name, extended in zip(finger_states['finger_names'], finger_states['fingers_up']):
+                    status = "✅ Extended" if extended else "❌ Folded"
+                    print(f"      {name}: {status}")
+                
+                # Hand orientation info
+                orientation = gesture_info['orientation']
+                print(f"   📐 Hand Angle: {orientation['hand_angle']:.1f}°")
+                print(f"   👋 Palm Facing Camera: {'Yes' if orientation['palm_facing_camera'] else 'No'}")
+            
+            # Calculate hand metrics
+            landmarks = hand['landmarks']
+            
+            # Hand span (thumb to pinky)
+            thumb_tip = landmarks[4]
+            pinky_tip = landmarks[20]
+            hand_span = np.sqrt(
+                (thumb_tip['x'] - pinky_tip['x'])**2 + 
+                (thumb_tip['y'] - pinky_tip['y'])**2
+            )
+            
+            # Hand length (wrist to middle finger)
+            wrist = landmarks[0]
+            middle_tip = landmarks[12]
+            hand_length = np.sqrt(
+                (middle_tip['x'] - wrist['x'])**2 + 
+                (middle_tip['y'] - wrist['y'])**2
+            )
+            
+            print(f"   📏 Hand Span: {hand_span:.4f}")
+            print(f"   📏 Hand Length: {hand_length:.4f}")
+            
+            # Key landmark positions
+            print("   📍 Key Landmark Positions:")
+            key_landmarks = [0, 4, 8, 12, 16, 20]
+            key_names = ['Wrist', 'Thumb Tip', 'Index Tip', 'Middle Tip', 'Ring Tip', 'Pinky Tip']
+            for idx, name in zip(key_landmarks, key_names):
+                landmark = landmarks[idx]
+                print(f"      {name}: ({landmark['x']:.4f}, {landmark['y']:.4f}, {landmark['z']:.4f})")
+        
+        print("="*60)
     
     def _detailed_analysis(self, results, gestures):
         """Perform detailed analysis of current frame."""
