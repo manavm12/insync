@@ -136,6 +136,44 @@ class RealTimeGestureDetector:
             'frame_shape': frame.shape
         }
     
+    def get_all_landmarks_formatted(self):
+        """
+        Get all 21 landmarks in a clean, formatted structure.
+        
+        Returns:
+            Dictionary with all landmark coordinates for each detected hand
+        """
+        landmarks_data = self.get_current_landmarks()
+        if not landmarks_data or landmarks_data['landmarks']['hands_detected'] == 0:
+            return None
+        
+        formatted_data = {
+            'timestamp': landmarks_data['timestamp'],
+            'hands_count': landmarks_data['landmarks']['hands_detected'],
+            'hands': []
+        }
+        
+        for hand in landmarks_data['landmarks']['hands']:
+            hand_data = {
+                'handedness': hand['handedness'],
+                'confidence': hand['handedness_confidence'],
+                'gesture': landmarks_data['gestures'][len(formatted_data['hands'])] if len(formatted_data['hands']) < len(landmarks_data['gestures']) else 'Unknown',
+                'landmarks': {}
+            }
+            
+            # Add all 21 landmarks with their names
+            for landmark in hand['landmarks']:
+                hand_data['landmarks'][landmark['name']] = {
+                    'id': landmark['id'],
+                    'x': landmark['x'],
+                    'y': landmark['y'], 
+                    'z': landmark['z']
+                }
+            
+            formatted_data['hands'].append(hand_data)
+        
+        return formatted_data
+    
     def _print_landmarks(self, results, gestures, frame_count):
         """Print landmark coordinates to console."""
         print(f"\n📊 Frame {frame_count} - Hands: {results['hands_detected']}")
@@ -146,14 +184,10 @@ class RealTimeGestureDetector:
             if i < len(gestures):
                 print(f"   🎯 Gesture: {gestures[i]}")
             
-            # Print key landmarks
-            key_landmarks = [0, 4, 8, 12, 16, 20]  # Wrist, thumb tip, finger tips
-            key_names = ['Wrist', 'Thumb', 'Index', 'Middle', 'Ring', 'Pinky']
-            
-            print("   📍 Key Landmarks:")
-            for idx, name in zip(key_landmarks, key_names):
-                landmark = hand['landmarks'][idx]
-                print(f"      {name}: ({landmark['x']:.3f}, {landmark['y']:.3f}, {landmark['z']:.3f})")
+            # Print ALL 21 landmarks
+            print("   📍 All Hand Landmarks (x, y, z):")
+            for idx, landmark in enumerate(hand['landmarks']):
+                print(f"      {idx:2d} - {landmark['name']:18s}: ({landmark['x']:.4f}, {landmark['y']:.4f}, {landmark['z']:.4f})")
     
     def _annotate_frame(self, frame, results, gestures):
         """Add annotations to the video frame."""
