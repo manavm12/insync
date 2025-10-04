@@ -82,6 +82,9 @@ Pipfile.lock
 
 # poetry
 poetry.lock
+ 
+# npm
+package-lock.json
 
 # Environments
 .env
