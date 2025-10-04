@@ -1,12 +1,15 @@
 """
-Gesture Interpretation Classes
+ASL Gesture Interpretation Classes
 
-This module contains specialized classes for interpreting gestures based on the number of fingers up.
-Each class handles the logic for a specific finger count (0-5) and determines the specific gesture.
+This module contains specialized classes for interpreting American Sign Language (ASL) gestures
+based on hand shape, finger positions, and hand orientation. Designed for real-time ASL interpretation
+to help the hearing-impaired communicate effectively.
+
+Each class handles the logic for a specific finger count (0-5) and determines the specific ASL gesture.
 """
 
 import math
-from typing import List, Dict
+from typing import List, Dict, Tuple, Optional
 
 
 class BaseGestureInterpreter:
@@ -35,8 +38,18 @@ class BaseGestureInterpreter:
         self.PINKY_PIP = 18
         self.PINKY_MCP = 17
     
-    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str) -> str:
-        """Interpret the gesture based on landmarks and finger states."""
+    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str, 
+                  face_ref: Optional[Dict] = None) -> str:
+        """
+        Interpret the gesture based on landmarks and finger states.
+        
+        Args:
+            landmarks: Hand landmark positions
+            fingers_up: Which fingers are extended
+            handedness: Left or Right hand
+            face_ref: Optional face reference points dict with keys:
+                     'nose', 'mouth', 'chin', 'forehead'
+        """
         raise NotImplementedError("Subclasses must implement interpret method")
     
     def _calculate_distance(self, point1: Dict, point2: Dict) -> float:
@@ -46,153 +59,366 @@ class BaseGestureInterpreter:
             (point1['y'] - point2['y'])**2 + 
             (point1['z'] - point2['z'])**2
         )
+    
+    def _is_hand_near_location(self, landmarks: List[Dict], target_y: float, tolerance: float = 0.15) -> bool:
+        """Check if hand is near a specific vertical location (for signs like 'thank you', 'please')."""
+        # Use multiple finger tips to determine hand position
+        avg_y = sum([landmarks[i]['y'] for i in [8, 12, 16]]) / 3
+        return abs(avg_y - target_y) < tolerance
+    
+    def _get_hand_openness(self, landmarks: List[Dict], fingers_up: List[bool]) -> float:
+        """Calculate how open/spread the hand is (0-1 scale)."""
+        # Calculate average distance between adjacent fingertips
+        distances = []
+        tip_indices = [4, 8, 12, 16, 20]
+        for i in range(len(tip_indices) - 1):
+            dist = self._calculate_distance(landmarks[tip_indices[i]], landmarks[tip_indices[i+1]])
+            distances.append(dist)
+        return sum(distances) / len(distances) if distances else 0
+    
+    def _are_fingertips_together(self, landmarks: List[Dict], finger_indices: List[int], threshold: float = 0.08) -> bool:
+        """Check if specified fingertips are close together."""
+        if len(finger_indices) < 2:
+            return False
+        total_dist = 0
+        count = 0
+        for i in range(len(finger_indices)):
+            for j in range(i + 1, len(finger_indices)):
+                dist = self._calculate_distance(landmarks[finger_indices[i]], landmarks[finger_indices[j]])
+                total_dist += dist
+                count += 1
+        avg_dist = total_dist / count if count > 0 else 0
+        return avg_dist < threshold
+    
+    def _is_fist_on_chest(self, landmarks: List[Dict]) -> bool:
+        """Check if hand is in fist position near chest area (for 'sorry', 'please')."""
+        # Approximate chest location in camera view
+        wrist_y = landmarks[self.WRIST]['y']
+        # Chest is typically in middle of frame vertically (0.3-0.6)
+        return 0.3 < wrist_y < 0.7
+    
+    def _check_palm_orientation(self, landmarks: List[Dict]) -> str:
+        """Determine if palm is facing towards or away from camera."""
+        wrist = landmarks[self.WRIST]
+        middle_mcp = landmarks[self.MIDDLE_MCP]
+        # If middle MCP is further from camera than wrist, palm faces away
+        if middle_mcp['z'] > wrist['z']:
+            return "away"
+        else:
+            return "towards"
+    
+    def _is_hand_near_face_point(self, landmarks: List[Dict], face_point: Dict, 
+                                  threshold: float = 0.15) -> bool:
+        """
+        Check if hand is near a specific face point.
+        
+        Args:
+            landmarks: Hand landmarks
+            face_point: Face reference point with 'x', 'y', 'z' coordinates
+            threshold: Distance threshold for "near" detection
+            
+        Returns:
+            True if hand is near the face point
+        """
+        if face_point is None:
+            return False
+        
+        # Use palm center (average of key points) for distance calculation
+        palm_center_x = sum([landmarks[i]['x'] for i in [0, 5, 9, 13, 17]]) / 5
+        palm_center_y = sum([landmarks[i]['y'] for i in [0, 5, 9, 13, 17]]) / 5
+        
+        palm_center = {'x': palm_center_x, 'y': palm_center_y, 'z': 0}
+        
+        distance = self._calculate_distance(palm_center, face_point)
+        return distance < threshold
+    
+    def _calculate_distance_to_face(self, hand_point: Dict, face_point: Optional[Dict]) -> float:
+        """
+        Calculate distance from a hand point to a face point.
+        
+        Args:
+            hand_point: Hand landmark point
+            face_point: Face reference point
+            
+        Returns:
+            Distance value, or infinity if face_point is None
+        """
+        if face_point is None:
+            return float('inf')
+        return self._calculate_distance(hand_point, face_point)
 
 
 class ZeroFingersInterpreter(BaseGestureInterpreter):
-    """Interpreter for gestures with 0 fingers up."""
+    """Interpreter for ASL gestures with 0 fingers up (closed fist)."""
     
-    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str) -> str:
-        """Interpret zero-finger gestures."""
-        return "Closed Fist"
+    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str,
+                  face_ref: Optional[Dict] = None) -> str:
+        """Interpret zero-finger ASL gestures."""
+        # Check if fist is near chest (could be "sorry" or "please")
+        if face_ref and face_ref.get('chin'):
+            # Use chin as reference for chest area
+            # If fist is near/below chin area, it's likely SORRY/PLEASE
+            if self._is_hand_near_face_point(landmarks, face_ref['chin'], threshold=0.20):
+                return "ASL: SORRY/PLEASE (fist at chest, motion needed)"
+        elif self._is_fist_on_chest(landmarks):
+            # Fallback to positional detection if no face reference
+            return "ASL: SORRY/PLEASE (fist at chest, motion needed)"
+        
+        return "ASL: Closed Fist"
 
 
 class OneFingerInterpreter(BaseGestureInterpreter):
-    """Interpreter for gestures with 1 finger up."""
+    """Interpreter for ASL gestures with 1 finger up."""
     
-    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str) -> str:
-        """Interpret one-finger gestures."""
+    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str,
+                  face_ref: Optional[Dict] = None) -> str:
+        """Interpret one-finger ASL gestures."""
         if fingers_up[0]:  # Only thumb
             return self._analyze_thumb_gesture(landmarks, handedness)
         elif fingers_up[1]:  # Only index
-            return "Pointing / One Finger Up"
+            return self._analyze_index_gesture(landmarks)
         elif fingers_up[2]:  # Only middle
-            return "Middle Finger"
+            return "ASL: Single Middle Finger"
         elif fingers_up[3]:  # Only ring
-            return "Ring Finger Up"
+            return "ASL: Single Ring Finger"
         elif fingers_up[4]:  # Only pinky
-            return "Pinky Up"
+            return "ASL: Single Pinky"
         
-        return "Unknown One Finger Gesture"
+        return "ASL: Single Finger Up"
     
     def _analyze_thumb_gesture(self, landmarks: List[Dict], handedness: str) -> str:
-        """Analyze thumb-only gestures to distinguish thumbs up/down."""
+        """Analyze thumb-only ASL gestures."""
         wrist_y = landmarks[self.WRIST]['y']
         thumb_tip_y = landmarks[self.THUMB_TIP]['y']
         thumb_mcp_y = landmarks[self.THUMB_MCP]['y']
         
-        # Check if thumb is pointing up or down relative to wrist and MCP
+        # Check if thumb is pointing up or down
         if thumb_tip_y < wrist_y and thumb_tip_y < thumb_mcp_y:
-            return "Thumbs Up"
+            return "ASL: GOOD / Number 10"
         elif thumb_tip_y > wrist_y and thumb_tip_y > thumb_mcp_y:
-            return "Thumbs Down"
+            return "ASL: BAD / Thumbs Down"
         else:
-            return "Thumb Extended"
+            return "ASL: Thumb Extended"
+    
+    def _analyze_index_gesture(self, landmarks: List[Dict]) -> str:
+        """Analyze index finger gestures for ASL."""
+        index_tip = landmarks[self.INDEX_TIP]
+        wrist = landmarks[self.WRIST]
+        
+        # Check if pointing up (Number 1)
+        if index_tip['y'] < wrist['y']:
+            return "ASL: Number 1"
+        else:
+            return "ASL: POINTING / GO (motion needed)"
 
 
 class TwoFingerInterpreter(BaseGestureInterpreter):
-    """Interpreter for gestures with 2 fingers up."""
+    """Interpreter for ASL gestures with 2 fingers up."""
     
-    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str) -> str:
-        """Interpret two-finger gestures."""
+    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str,
+                  face_ref: Optional[Dict] = None) -> str:
+        """Interpret two-finger ASL gestures."""
         if fingers_up[1] and fingers_up[2]:  # Index + Middle
-            return self._analyze_two_finger_gesture(landmarks)
+            return self._analyze_index_middle_gesture(landmarks)
         elif fingers_up[0] and fingers_up[1]:  # Thumb + Index
-            return "Gun / L-Shape"
+            return self._analyze_thumb_index_gesture(landmarks)
         elif fingers_up[0] and fingers_up[4]:  # Thumb + Pinky
-            return "Call Me / Shaka"
+            return self._analyze_thumb_pinky_gesture(landmarks)
         elif fingers_up[3] and fingers_up[4]:  # Ring + Pinky
-            return "Two Fingers (Ring + Pinky)"
+            return "ASL: Two Fingers (Ring + Pinky)"
+        elif fingers_up[0] and fingers_up[2]:  # Thumb + Middle
+            return "ASL: Thumb + Middle"
         else:
-            return "Two Fingers Up"
+            return "ASL: Two Fingers Up"
     
-    def _analyze_two_finger_gesture(self, landmarks: List[Dict]) -> str:
-        """Analyze two-finger gestures (index + middle) for peace sign vs victory."""
-        # Calculate distance between index and middle fingertips
+    def _analyze_index_middle_gesture(self, landmarks: List[Dict]) -> str:
+        """Analyze index + middle finger ASL gestures."""
         index_tip = landmarks[self.INDEX_TIP]
         middle_tip = landmarks[self.MIDDLE_TIP]
+        wrist = landmarks[self.WRIST]
         
         distance = self._calculate_distance(index_tip, middle_tip)
         
-        # If fingers are spread apart, it's likely a peace sign
-        if distance > 0.05:  # Threshold for spread fingers
-            return "Peace Sign / Victory"
+        # Check if fingers are pointing up (Number 2)
+        avg_y = (index_tip['y'] + middle_tip['y']) / 2
+        if avg_y < wrist['y'] and distance > 0.05:
+            return "ASL: Number 2 / PEACE"
+        elif distance > 0.05:
+            return "ASL: PEACE Sign"
         else:
-            return "Two Fingers Close"
+            # Fingers close together
+            return "ASL: Two Fingers Close"
+    
+    def _analyze_thumb_index_gesture(self, landmarks: List[Dict]) -> str:
+        """Analyze thumb + index finger ASL gestures."""
+        thumb_tip = landmarks[self.THUMB_TIP]
+        index_tip = landmarks[self.INDEX_TIP]
+        
+        # Check if forming a circle (OK sign)
+        distance = self._calculate_distance(thumb_tip, index_tip)
+        if distance < 0.06:
+            return "ASL: OK / FINE"
+        else:
+            # L-shape
+            return "ASL: L-Shape"
+    
+    def _analyze_thumb_pinky_gesture(self, landmarks: List[Dict]) -> str:
+        """Analyze thumb + pinky ASL gestures."""
+        return "ASL: CALL ME / Hang Loose"
 
 
 class ThreeFingerInterpreter(BaseGestureInterpreter):
-    """Interpreter for gestures with 3 fingers up."""
+    """Interpreter for ASL gestures with 3 fingers up."""
     
-    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str) -> str:
-        """Interpret three-finger gestures."""
-        # I Love You sign: Thumb + Index + Pinky (palm facing away)
+    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str,
+                  face_ref: Optional[Dict] = None) -> str:
+        """Interpret three-finger ASL gestures."""
+        # I Love You sign: Thumb + Index + Pinky
         if fingers_up[0] and fingers_up[1] and fingers_up[4] and not fingers_up[2] and not fingers_up[3]:
-            return self._analyze_iloveyou_gesture(landmarks, handedness)
-        # Rock On sign: Index + Pinky (with thumb sometimes)
-        elif fingers_up[1] and fingers_up[4] and not fingers_up[2] and not fingers_up[3]:
-            return "Rock On / Devil Horns"
-        # Three middle fingers: Index + Middle + Ring
+            return self._analyze_iloveyou_gesture(landmarks)
+        # Three middle fingers: Index + Middle + Ring (Number 3)
         elif fingers_up[1] and fingers_up[2] and fingers_up[3] and not fingers_up[0] and not fingers_up[4]:
-            return "Three Fingers Up"
+            return self._analyze_three_middle_fingers(landmarks)
         # Thumb + Index + Middle
         elif fingers_up[0] and fingers_up[1] and fingers_up[2] and not fingers_up[3] and not fingers_up[4]:
-            return "Three (Thumb + Index + Middle)"
+            return "ASL: Number 3 (variant)"
         # Thumb + Middle + Ring
         elif fingers_up[0] and fingers_up[2] and fingers_up[3] and not fingers_up[1] and not fingers_up[4]:
-            return "Three (Thumb + Middle + Ring)"
+            return "ASL: Three Fingers (Thumb + Middle + Ring)"
         # Thumb + Ring + Pinky
         elif fingers_up[0] and fingers_up[3] and fingers_up[4] and not fingers_up[1] and not fingers_up[2]:
-            return "Three (Thumb + Ring + Pinky)"
+            return "ASL: Three Fingers (Thumb + Ring + Pinky)"
         # Index + Ring + Pinky
         elif fingers_up[1] and fingers_up[3] and fingers_up[4] and not fingers_up[0] and not fingers_up[2]:
-            return "Three (Index + Ring + Pinky)"
+            return "ASL: Three Fingers (Index + Ring + Pinky)"
+        # Middle + Ring + Pinky
+        elif fingers_up[2] and fingers_up[3] and fingers_up[4] and not fingers_up[0] and not fingers_up[1]:
+            return "ASL: Three Fingers (Middle + Ring + Pinky)"
         else:
-            return "Three Fingers Up"
+            return "ASL: Three Fingers Up"
     
-    def _analyze_iloveyou_gesture(self, landmarks: List[Dict], handedness: str) -> str:
-        """Analyze the 'I Love You' sign (thumb + index + pinky)."""
-        # Check palm orientation by looking at the z-coordinate of key landmarks
-        wrist = landmarks[self.WRIST]
-        middle_mcp = landmarks[self.MIDDLE_MCP]
+    def _analyze_iloveyou_gesture(self, landmarks: List[Dict]) -> str:
+        """Analyze the ASL 'I Love You' sign (thumb + index + pinky)."""
+        palm_orientation = self._check_palm_orientation(landmarks)
         
-        # If middle MCP is further from camera than wrist, palm is facing away
-        palm_facing_away = middle_mcp['z'] > wrist['z']
-        
-        if palm_facing_away:
-            return "I Love You"
+        if palm_orientation == "away":
+            return "ASL: I LOVE YOU"
         else:
-            return "I Love You (Palm Towards)"
+            return "ASL: I LOVE YOU (palm towards)"
+    
+    def _analyze_three_middle_fingers(self, landmarks: List[Dict]) -> str:
+        """Analyze three middle fingers extended (index, middle, ring)."""
+        index_tip = landmarks[self.INDEX_TIP]
+        middle_tip = landmarks[self.MIDDLE_TIP]
+        ring_tip = landmarks[self.RING_TIP]
+        wrist = landmarks[self.WRIST]
+        
+        # Check if pointing upward (Number 3)
+        avg_y = (index_tip['y'] + middle_tip['y'] + ring_tip['y']) / 3
+        if avg_y < wrist['y']:
+            return "ASL: Number 3"
+        else:
+            return "ASL: Three Fingers Extended"
 
 
 class FourFingerInterpreter(BaseGestureInterpreter):
-    """Interpreter for gestures with 4 fingers up."""
+    """Interpreter for ASL gestures with 4 fingers up."""
     
-    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str) -> str:
-        """Interpret four-finger gestures."""
-        if not fingers_up[0]:  # All except thumb
-            return "Four Fingers (No Thumb)"
+    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str,
+                  face_ref: Optional[Dict] = None) -> str:
+        """Interpret four-finger ASL gestures."""
+        if not fingers_up[0]:  # All except thumb (Number 4 or Letter B)
+            return self._analyze_four_no_thumb(landmarks)
         elif not fingers_up[4]:  # All except pinky
-            return "Four Fingers (No Pinky)"
+            return "ASL: Four Fingers (No Pinky)"
         elif not fingers_up[1]:  # All except index
-            return "Four Fingers (No Index)"
+            return "ASL: Four Fingers (No Index)"
         elif not fingers_up[2]:  # All except middle
-            return "Four Fingers (No Middle)"
+            return "ASL: Four Fingers (No Middle)"
         elif not fingers_up[3]:  # All except ring
-            return "Four Fingers (No Ring)"
+            return "ASL: Four Fingers (No Ring)"
         else:
-            return "Four Fingers Up"
+            return "ASL: Four Fingers Up"
+    
+    def _analyze_four_no_thumb(self, landmarks: List[Dict]) -> str:
+        """Analyze four fingers without thumb (common ASL gesture)."""
+        wrist = landmarks[self.WRIST]
+        index_tip = landmarks[self.INDEX_TIP]
+        
+        # Check if fingers pointing upward
+        if index_tip['y'] < wrist['y']:
+            # Check if fingers are spread (Number 4)
+            finger_tips = [landmarks[i] for i in [8, 12, 16, 20]]
+            total_spread = sum([
+                self._calculate_distance(finger_tips[i], finger_tips[i+1]) 
+                for i in range(len(finger_tips)-1)
+            ])
+            
+            if total_spread > 0.15:
+                return "ASL: Number 4"
+            else:
+                return "ASL: Four Fingers Together"
+        else:
+            return "ASL: Four Fingers Extended"
 
 
 class FiveFingerInterpreter(BaseGestureInterpreter):
-    """Interpreter for gestures with 5 fingers up."""
+    """Interpreter for ASL gestures with 5 fingers up (open hand)."""
     
-    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str) -> str:
-        """Interpret five-finger gestures."""
-        return "Open Hand"
+    def interpret(self, landmarks: List[Dict], fingers_up: List[bool], handedness: str,
+                  face_ref: Optional[Dict] = None) -> str:
+        """Interpret five-finger ASL gestures."""
+        return self._analyze_open_hand(landmarks, face_ref)
+    
+    def _analyze_open_hand(self, landmarks: List[Dict], face_ref: Optional[Dict] = None) -> str:
+        """Analyze open hand gestures for ASL meanings with face reference."""
+        palm_orientation = self._check_palm_orientation(landmarks)
+        hand_openness = self._get_hand_openness(landmarks, [True]*5)
+        wrist = landmarks[self.WRIST]
+        middle_tip = landmarks[self.MIDDLE_TIP]
+        
+        # If we have face reference, use it for better detection
+        if face_ref:
+            # Check if hand is near mouth (THANK YOU)
+            if face_ref.get('mouth'):
+                dist_to_mouth = self._calculate_distance_to_face(middle_tip, face_ref['mouth'])
+                if dist_to_mouth < 0.12:  # Very close to mouth
+                    return "ASL: THANK YOU (near mouth, motion needed)"
+            
+            # Check if hand is near chin/chest area (PLEASE)
+            if face_ref.get('chin'):
+                dist_to_chin = self._calculate_distance_to_face(middle_tip, face_ref['chin'])
+                if 0.12 < dist_to_chin < 0.25:  # Between mouth and chest
+                    return "ASL: PLEASE (chest area, motion needed)"
+            
+            # Check if hand is near forehead (HELLO)
+            if face_ref.get('forehead'):
+                dist_to_forehead = self._calculate_distance_to_face(middle_tip, face_ref['forehead'])
+                if dist_to_forehead < 0.15 and palm_orientation == "away":
+                    return "ASL: HELLO / HI (near forehead)"
+        
+        # Fallback to position-based detection if no face reference
+        # Upper region suggests "Hello" or "Stop"
+        if middle_tip['y'] < 0.3:
+            if palm_orientation == "away":
+                return "ASL: HELLO / HI"
+            else:
+                return "ASL: STOP / WAIT"
+        
+        # Middle region near chest could be "Please" or "Thank You" (motion needed)
+        elif 0.3 < middle_tip['y'] < 0.6:
+            return "ASL: Open Hand (PLEASE/THANK YOU need motion)"
+        
+        # Check if hand is very spread (Number 5)
+        elif hand_openness > 0.15:
+            return "ASL: Number 5"
+        
+        # General open hand
+        return "ASL: Open Hand"
 
 
 class GestureInterpreterFactory:
-    """Factory class to create appropriate gesture interpreters."""
+    """Factory class to create appropriate ASL gesture interpreters."""
     
     def __init__(self):
         self.interpreters = {
@@ -209,7 +435,180 @@ class GestureInterpreterFactory:
         return self.interpreters.get(finger_count, ZeroFingersInterpreter())
     
     def interpret_gesture(self, landmarks: List[Dict], fingers_up: List[bool], 
-                         finger_count: int, handedness: str) -> str:
-        """Interpret gesture using the appropriate interpreter."""
+                         finger_count: int, handedness: str, 
+                         face_ref: Optional[Dict] = None) -> str:
+        """
+        Interpret ASL gesture using the appropriate interpreter.
+        
+        Args:
+            landmarks: Hand landmark positions
+            fingers_up: Which fingers are extended
+            finger_count: Total number of fingers up
+            handedness: Left or Right hand
+            face_ref: Optional face reference points dict with keys:
+                     'nose', 'mouth', 'chin', 'forehead'
+        """
         interpreter = self.get_interpreter(finger_count)
-        return interpreter.interpret(landmarks, fingers_up, handedness)
+        return interpreter.interpret(landmarks, fingers_up, handedness, face_ref)
+    
+    def get_supported_gestures(self) -> Dict[str, List[str]]:
+        """
+        Get a dictionary of all supported ASL gestures organized by category.
+        
+        Returns:
+            Dictionary with categories and their supported gestures
+        """
+        return {
+            "Numbers": [
+                "Number 1 (index finger up)",
+                "Number 2 (index + middle fingers, V-shape)",
+                "Number 3 (index + middle + ring fingers)",
+                "Number 4 (four fingers spread, thumb tucked)",
+                "Number 5 (all fingers spread)",
+                "Number 10 (thumbs up / GOOD)"
+            ],
+            "Common Words & Phrases": [
+                "HELLO / HI (open hand raised, palm out)",
+                "GOODBYE (wave hand - needs motion)",
+                "THANK YOU (hand from lips moving forward - needs motion)",
+                "PLEASE (hand circular motion on chest - needs motion)",
+                "SORRY (fist circular on chest - needs motion)",
+                "I LOVE YOU (thumb + index + pinky extended)",
+                "YES (fist nodding - needs motion)",
+                "NO (fingers closing - needs motion)",
+                "STOP (palm facing out)",
+                "WAIT (palm facing out)",
+                "GOOD (thumbs up / Number 10)",
+                "BAD (thumbs down)",
+                "OK / FINE (thumb + index circle)",
+                "PEACE (index + middle V-shape)"
+            ],
+            "Everyday Needs": [
+                "HELP (fist on palm, lift together - needs motion)",
+                "EAT (fingertips to mouth - needs motion)",
+                "DRINK (C-shape to mouth - needs motion)",
+                "WATER (fingers at chin - needs motion)",
+                "BATHROOM (shaking hand - needs motion)",
+                "MORE (fingertips together - needs motion)",
+                "WANT (hands pulling toward body - needs motion)",
+                "NEED (downward motion - needs motion)",
+                "GO (pointing forward - needs motion)",
+                "COME (pointing inward - needs motion)",
+                "CALL ME (thumb + pinky extended)",
+                "POINTING (index finger extended)"
+            ],
+            "Note": [
+                "Signs marked with 'needs motion' require movement tracking.",
+                "This version recognizes static hand shapes and positions.",
+                "For full ASL communication, consider upgrading to MediaPipe Holistic",
+                "to track facial expressions and body language, which are crucial in ASL.",
+                "Alphabet letters have been removed to focus on practical communication words."
+            ]
+        }
+
+
+# ============================================================================
+# ASL GESTURE VOCABULARY REFERENCE
+# ============================================================================
+"""
+SUPPORTED ASL GESTURES AND SIGNS
+
+This module currently recognizes the following ASL gestures based on static
+hand shapes. For complete ASL interpretation, motion tracking and facial
+expressions should be added.
+
+NUMBERS (0-10):
+---------------
+0: Closed fist forming 'O' shape
+1: Index finger pointing up
+2: Index + middle fingers in V-shape (Peace sign)
+3: Index + middle + ring fingers
+4: Four fingers spread, thumb tucked in
+5: All five fingers spread open
+10: Thumbs up / "GOOD" gesture
+
+COMMON WORDS & PHRASES (Static hand shapes):
+--------------------------------------------
+HELLO/HI: Open palm raised near forehead, palm facing out
+STOP/WAIT: Open palm facing forward
+I LOVE YOU: Thumb + index + pinky extended, palm out
+GOOD: Thumbs up (Number 10)
+BAD: Thumbs down
+OK/FINE: Thumb and index forming circle
+PEACE: Index + middle forming V-shape
+
+WORDS REQUIRING MOTION (Currently shows hand shape only):
+---------------------------------------------------------
+THANK YOU: Open palm near lips (needs forward motion)
+PLEASE: Open palm on chest (needs circular motion)
+SORRY: Fist on chest (needs circular motion)
+YES: Fist (needs nodding motion)
+NO: Three fingers closing together (needs motion)
+HELP: Fist on palm (needs lifting motion)
+EAT: Fingertips together (needs motion to mouth)
+DRINK: C-shape (needs motion to mouth)
+WATER: W-sign (needs motion at chin)
+MORE: Fingertips together (needs tapping motion)
+WANT: Open palms (needs pulling toward body motion)
+GO: Pointing (needs forward motion)
+COME: Pointing (needs inward motion)
+
+EMOTIONS & STATES:
+-----------------
+HAPPY: Hands brushing up on chest (needs motion)
+SAD: Hands moving down face (needs motion)
+ANGRY: Claw shape at face (needs motion)
+EXCITED: Alternating circular motion on chest (needs motion)
+
+IMPLEMENTATION NOTES:
+--------------------
+1. Current implementation detects STATIC hand shapes
+2. For motion-based signs (marked above), the hand shape is detected,
+   but motion tracking needs to be added for full recognition
+3. Facial expressions are CRITICAL in ASL for:
+   - Distinguishing questions from statements
+   - Showing emotions and intensity
+   - Grammatical markers
+4. Body language adds context and emphasis
+
+RECOMMENDATIONS FOR FULL ASL SUPPORT:
+------------------------------------
+1. Upgrade from MediaPipe Hands to MediaPipe Holistic for:
+   - Hand tracking (already implemented)
+   - Facial landmark detection (468 face landmarks)
+   - Pose estimation (33 body landmarks)
+
+2. Add temporal tracking to detect motion patterns:
+   - Track landmark positions over multiple frames
+   - Calculate velocity and direction of movement
+   - Recognize circular, linear, and complex motion patterns
+
+3. Implement facial expression recognition:
+   - Eyebrow position (raised = question)
+   - Mouth shape (important for many signs)
+   - Head tilt and nods
+   - Eye gaze direction
+
+4. Add two-hand gesture recognition:
+   - Many ASL signs require both hands
+   - Track relative positions and movements
+
+5. Build a vocabulary expansion system:
+   - Allow users to teach new signs
+   - Create personal gesture libraries
+   - Regional sign variations
+
+USAGE EXAMPLE:
+-------------
+from gesture_interpreters import GestureInterpreterFactory
+
+factory = GestureInterpreterFactory()
+
+# Get list of supported gestures
+supported = factory.get_supported_gestures()
+print("Supported ASL gestures:", supported)
+
+# Interpret a gesture
+gesture = factory.interpret_gesture(landmarks, fingers_up, finger_count, handedness)
+print(f"Detected gesture: {gesture}")
+"""
