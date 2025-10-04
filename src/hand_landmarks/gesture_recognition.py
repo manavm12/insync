@@ -8,6 +8,7 @@ including thumbs up/down, finger counting, peace signs, and more.
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 import math
+from .gesture_interpreters import GestureInterpreterFactory
 
 
 class GestureRecognizer:
@@ -42,6 +43,9 @@ class GestureRecognizer:
         self.finger_pips = [self.THUMB_IP, self.INDEX_PIP, self.MIDDLE_PIP, self.RING_PIP, self.PINKY_PIP]
         self.finger_mcps = [self.THUMB_MCP, self.INDEX_MCP, self.MIDDLE_MCP, self.RING_MCP, self.PINKY_MCP]
         self.finger_names = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']
+        
+        # Initialize gesture interpreter factory
+        self.interpreter_factory = GestureInterpreterFactory()
     
     def recognize_gesture(self, landmarks: List[Dict], handedness: str = "Right") -> str:
         """
@@ -100,7 +104,7 @@ class GestureRecognizer:
     def _classify_gesture(self, landmarks: List[Dict], fingers_up: List[bool], 
                          fingers_count: int, handedness: str) -> str:
         """
-        Classify the gesture based on finger states and additional analysis.
+        Classify the gesture based on finger states using specialized interpreters.
         
         Args:
             landmarks: Hand landmarks
@@ -111,104 +115,10 @@ class GestureRecognizer:
         Returns:
             Gesture name
         """
-        # No fingers up
-        if fingers_count == 0:
-            return "Closed Fist"
-        
-        # All fingers up
-        elif fingers_count == 5:
-            return "Open Hand"
-        
-        # One finger gestures
-        elif fingers_count == 1:
-            if fingers_up[0]:  # Only thumb
-                return self._analyze_thumb_gesture(landmarks, handedness)
-            elif fingers_up[1]:  # Only index
-                return "Pointing / One Finger Up"
-            elif fingers_up[2]:  # Only middle
-                return "Middle Finger"
-            elif fingers_up[3]:  # Only ring
-                return "Ring Finger Up"
-            elif fingers_up[4]:  # Only pinky
-                return "Pinky Up"
-        
-        # Two finger gestures
-        elif fingers_count == 2:
-            if fingers_up[1] and fingers_up[2]:  # Index + Middle
-                return self._analyze_two_finger_gesture(landmarks)
-            elif fingers_up[0] and fingers_up[1]:  # Thumb + Index
-                return "Gun / L-Shape"
-            elif fingers_up[0] and fingers_up[4]:  # Thumb + Pinky
-                return "Call Me / Shaka"
-            elif fingers_up[3] and fingers_up[4]:  # Ring + Pinky
-                return "Two Fingers (Ring + Pinky)"
-            else:
-                return f"Two Fingers Up"
-        
-        # Three finger gestures
-        elif fingers_count == 3:
-            if fingers_up[1] and fingers_up[2] and fingers_up[3]:  # Index + Middle + Ring
-                return "Three Fingers Up"
-            elif fingers_up[0] and fingers_up[1] and fingers_up[2]:  # Thumb + Index + Middle
-                return "Three (Thumb + Index + Middle)"
-            else:
-                return "Three Fingers Up"
-        
-        # Four finger gestures
-        elif fingers_count == 4:
-            if not fingers_up[0]:  # All except thumb
-                return "Four Fingers (No Thumb)"
-            elif not fingers_up[4]:  # All except pinky
-                return "Four Fingers (No Pinky)"
-            else:
-                return "Four Fingers Up"
-        
-        return "Unknown Gesture"
+        return self.interpreter_factory.interpret_gesture(
+            landmarks, fingers_up, fingers_count, handedness
+        )
     
-    def _analyze_thumb_gesture(self, landmarks: List[Dict], handedness: str) -> str:
-        """
-        Analyze thumb-only gestures to distinguish thumbs up/down.
-        
-        Args:
-            landmarks: Hand landmarks
-            handedness: Hand orientation
-            
-        Returns:
-            Specific thumb gesture
-        """
-        wrist_y = landmarks[self.WRIST]['y']
-        thumb_tip_y = landmarks[self.THUMB_TIP]['y']
-        thumb_mcp_y = landmarks[self.THUMB_MCP]['y']
-        
-        # Check if thumb is pointing up or down relative to wrist and MCP
-        if thumb_tip_y < wrist_y and thumb_tip_y < thumb_mcp_y:
-            return "Thumbs Up"
-        elif thumb_tip_y > wrist_y and thumb_tip_y > thumb_mcp_y:
-            return "Thumbs Down"
-        else:
-            return "Thumb Extended"
-    
-    def _analyze_two_finger_gesture(self, landmarks: List[Dict]) -> str:
-        """
-        Analyze two-finger gestures (index + middle) for peace sign vs victory.
-        
-        Args:
-            landmarks: Hand landmarks
-            
-        Returns:
-            Specific two-finger gesture
-        """
-        # Calculate distance between index and middle fingertips
-        index_tip = landmarks[self.INDEX_TIP]
-        middle_tip = landmarks[self.MIDDLE_TIP]
-        
-        distance = self._calculate_distance(index_tip, middle_tip)
-        
-        # If fingers are spread apart, it's likely a peace sign
-        if distance > 0.05:  # Threshold for spread fingers
-            return "Peace Sign / Victory"
-        else:
-            return "Two Fingers Close"
     
     def _calculate_distance(self, point1: Dict, point2: Dict) -> float:
         """Calculate Euclidean distance between two landmark points."""
