@@ -13,12 +13,17 @@ from .gesture_translator import fix_sentence
 import json
 import time
 import threading
+import subprocess
+import shutil
+import sys
+import argparse
 from collections import deque
+import os
 
 class RealTimeGestureDetector:
     """Real-time gesture detection from camera with landmark output."""
     
-    def __init__(self, camera_id=0, use_holistic=True):
+    def __init__(self, camera_id=0, use_holistic=True, auto_play_tts: bool = False, tts_auto_enqueue_short_sentences: int = 3):
         """
         Initialize the real-time gesture detector.
         
@@ -29,63 +34,82 @@ class RealTimeGestureDetector:
         """
         self.camera_id = camera_id
         self.use_holistic = use_holistic
-        
+
         if use_holistic:
-            # Use Holistic detector for hand + face tracking
-            self.detector = HolisticDetector(
-                min_detection_confidence=0.7,
-                min_tracking_confidence=0.5
-            )
+            self.detector = HolisticDetector(min_detection_confidence=0.7, min_tracking_confidence=0.5)
             print("✨ Using Holistic detector (Hand + Face tracking enabled)")
         else:
-            # Use standard hand detector
-            self.detector = HandLandmarksDetector(
-                max_num_hands=2,
-                min_detection_confidence=0.7,
-                min_tracking_confidence=0.5
-            )
+            self.detector = HandLandmarksDetector(max_num_hands=2, min_detection_confidence=0.7, min_tracking_confidence=0.5)
             print("✋ Using standard hand detector")
-        
+
         self.gesture_recognizer = GestureRecognizer()
         self.cap = None
         self.running = False
-        
-        # Sentence building and translation
-        self.current_sentence: List[str] = []
-        self.last_gesture: Optional[str] = None
-        self.last_gesture_time: float = 0
-        self.sentence_timeout: float = 5.0  # 5 seconds to complete a sentence
-        
+
+        # Sentence building and translation (plain assignments to avoid in-method annotations)
+        self.current_sentence = []
+        self.last_gesture = None
+        self.last_gesture_time = 0
+        self.sentence_timeout = 5.0  # seconds to complete a sentence
+
         # Translation queue and results
-        self.sentence_queue: deque = deque()
-        self.translated_sentences: List[Dict] = []
-        self.translation_thread: Optional[threading.Thread] = None
-        self.translation_running: bool = False
-        
+        self.sentence_queue = deque()
+        self.translated_sentences = []
+        self.translation_thread = None
+        self.translation_running = False
+
+        # TTS queue and results (sentences to send to ElevenLabs)
+        self.tts_queue = deque()
+        self.tts_results = []
+        self.tts_thread = None
+        self.tts_running = False
+
+        # Default voice id for ElevenLabs TTS; can be overridden via env or parameter
+        self.tts_voice_id = os.getenv("XI_VOICE_ID")
+
+        # Persistent ElevenLabs client (optional). If XI_API_KEY is set and the
+        # official SDK is installed, instantiate a reusable client to avoid
+        # creating a new connection for every synthesis request.
+        self._eleven_client = None
+        try:
+            if os.getenv('XI_API_KEY'):
+                from elevenlabs import ElevenLabs
+                self._eleven_client = ElevenLabs(base_url="https://api.elevenlabs.io")
+                print("🔁 ElevenLabs client initialized for TTS")
+        except Exception:
+            # Non-fatal: we'll fall back to the helper which itself will
+            # attempt a lazy SDK import per-call if needed.
+            self._eleven_client = None
+
+        # Whether to auto-play synthesized TTS audio after synthesis completes
+        # Can be toggled via constructor or the `enable_auto_play` method.
+        self.auto_play_tts = bool(auto_play_tts)
+
+        # (optional) If a completed sentence has <= this many words, it will
+        # be auto-enqueued directly to TTS (bypassing translation)
+        self.tts_auto_enqueue_short_sentences = int(tts_auto_enqueue_short_sentences or 0)
+
         # Display settings
-        self.show_raw_gestures: bool = True
-        self.show_translations: bool = True
+        self.show_raw_gestures = True
+        self.show_translations = True
+
+    def enable_auto_play(self, enable: bool = True):
+        """Toggle automatic playback of synthesized TTS audio."""
+        self.auto_play_tts = bool(enable)
         
-    def start_detection(self, show_video=True, print_landmarks=True, save_to_file=False):
-        """
-        Start real-time gesture detection.
-        
-        Args:
-            show_video: Whether to display the video window
-            print_landmarks: Whether to print landmark coordinates to console
-            save_to_file: Whether to save landmarks to JSON file
-        """
+    def start_detection(self, show_video: bool = True, print_landmarks: bool = True, save_to_file: bool = False):
+        """Start the real-time detection loop."""
         # Initialize camera
         self.cap = cv2.VideoCapture(self.camera_id)
-        
+
         if not self.cap.isOpened():
             raise ValueError(f"Could not open camera with ID: {self.camera_id}")
-        
-        # Set camera properties for better performance
+
+        # Set camera properties
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.cap.set(cv2.CAP_PROP_FPS, 30)
-        
+
         print("🎥 Camera connected successfully!")
         print("👋 Starting hand gesture detection...")
         print("\nControls:")
@@ -97,48 +121,44 @@ class RealTimeGestureDetector:
         print("  'c' - Clear all sentences and translations")
         print("  'n' - Force new sentence (don't wait for timeout)")
         print("  SPACE - Capture and analyze current frame")
-        
+
         self._reset_sentence_system()
         self._start_translation_thread()
+        self._start_tts_thread()
         self.running = True
         frame_count = 0
-        
+
         try:
             while self.running:
                 ret, frame = self.cap.read()
                 if not ret:
                     print("Failed to read from camera")
                     break
-                
-                # Flip frame horizontally for mirror effect
+
+                # Mirror
                 frame = cv2.flip(frame, 1)
-                
-                # Detect hand landmarks
+
+                # Detection
                 results = self.detector.detect_landmarks_image(frame)
-                
-                # Get gesture data
                 gesture_data = self.detector.get_gesture_landmarks(frame)
-                
-                # Use advanced gesture recognition
+
                 advanced_gestures = recognize_advanced_gestures(gesture_data)
                 basic_gestures = recognize_basic_gestures(gesture_data)
                 self._update_sentence_buffer(advanced_gestures)
                 self._check_sentence_timeout()
-                
-                # Process and display results
+
+                # Process
                 if results['hands_detected'] > 0:
                     if print_landmarks:
                         self._print_landmarks_advanced(results, advanced_gestures, frame_count)
-                    
                     if save_to_file:
                         self._save_landmarks_to_file(results, advanced_gestures, frame_count)
-                
-                # Draw landmarks and info on frame
+
                 if show_video:
                     annotated_frame = self._annotate_frame_advanced(frame, results, advanced_gestures)
                     cv2.imshow('Real-time Hand Gesture Detection', annotated_frame)
-                
-                # Handle key presses
+
+                # Keys
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
                     break
@@ -159,12 +179,12 @@ class RealTimeGestureDetector:
                     self._force_new_sentence()
                 elif key == ord(' '):
                     self._detailed_analysis_advanced(results, advanced_gestures)
-                
+
                 frame_count += 1
-                
+
         except KeyboardInterrupt:
             print("\n🛑 Detection stopped by user")
-        
+
         finally:
             self._cleanup()
     
@@ -268,21 +288,28 @@ class RealTimeGestureDetector:
             
         sentence_text = ' '.join(self.current_sentence)
         print(f"\n✅ Sentence completed: '{sentence_text}'")
-        
-        # Add to translation queue
+        # Centralized enqueue for translation (keeps id logic in one place)
+        self._enqueue_sentence_for_translation(sentence_text)
+
+        # Reset for next sentence
+        self.current_sentence.clear()
+        self.last_gesture = None
+
+    def _enqueue_sentence_for_translation(self, sentence_text: str):
+        """Create a sentence_data object and append to the translation queue.
+
+        This central helper makes it easier to change id/timestamping or to add
+        persistence/retry logic later.
+        """
         sentence_data = {
             'id': len(self.translated_sentences) + len(self.sentence_queue) + 1,
             'raw_text': sentence_text,
             'timestamp': time.time(),
             'status': 'queued'
         }
-        
+
         self.sentence_queue.append(sentence_data)
         print(f"📤 Queued for translation (Queue size: {len(self.sentence_queue)})")
-        
-        # Reset for next sentence
-        self.current_sentence.clear()
-        self.last_gesture = None
 
     def _force_new_sentence(self):
         """Force completion of current sentence without waiting for timeout."""
@@ -312,6 +339,13 @@ class RealTimeGestureDetector:
         self.translation_thread.start()
         print("🤖 Translation service started")
 
+    def _start_tts_thread(self):
+        """Start the background TTS worker thread."""
+        self.tts_running = True
+        self.tts_thread = threading.Thread(target=self._tts_worker, daemon=True)
+        self.tts_thread.start()
+        print("🔊 TTS service started")
+
     def _translation_worker(self):
         """Background worker to process translation queue."""
         while self.translation_running:
@@ -337,6 +371,21 @@ class RealTimeGestureDetector:
                     # Keep only last 10 translations to save memory
                     if len(self.translated_sentences) > 10:
                         self.translated_sentences.pop(0)
+
+                    # Enqueue for TTS synthesis
+                    try:
+                        tts_entry = {
+                            'id': sentence_data['id'],
+                            'text': sentence_data['translated_text'],
+                            'timestamp': time.time(),
+                            'status': 'queued',
+                            'voice_id': self.tts_voice_id
+                        }
+                        self.tts_queue.append(tts_entry)
+                        print(f"📣 Queued for TTS (TTS Queue size: {len(self.tts_queue)})")
+                    except Exception:
+                        # non-fatal - continue
+                        pass
                 
                 time.sleep(0.1)  # Small delay to prevent busy waiting
                 
@@ -347,6 +396,108 @@ class RealTimeGestureDetector:
                     failed_sentence['status'] = 'failed'
                     failed_sentence['error'] = str(e)
                     self.translated_sentences.append(failed_sentence)
+
+    def _tts_worker(self):
+        """Background worker that consumes translated sentences and synthesizes audio via ElevenLabs."""
+        while self.tts_running:
+            try:
+                if self.tts_queue:
+                    tts_data = self.tts_queue.popleft()
+                    tts_data['status'] = 'synthesizing'
+                    tts_data['synthesis_start'] = time.time()
+
+                    # Lazy import to avoid import-time dependencies
+                    try:
+                        from src.eleven_tts import synthesize_to_file
+                    except Exception:
+                        # can't synthesize without the module
+                        tts_data['status'] = 'failed'
+                        tts_data['error'] = 'eleven_tts module not available'
+                        self.tts_results.append(tts_data)
+                        print(f"❌ TTS failed (module missing) for id {tts_data.get('id')}")
+                        continue
+
+                    voice_id = tts_data.get('voice_id') or self.tts_voice_id or os.getenv('XI_VOICE_ID')
+                    api_key = os.getenv('XI_API_KEY')
+                    out_name = f"tts_{tts_data.get('id')}.mp3"
+
+                    try:
+                        print(f"🔊 TTS synthesis started for id {tts_data.get('id')}: '{tts_data.get('text')[:60]}'")
+
+                        # Prefer a persistent client when available (faster, reused TCP/TLS)
+                        audio_path = None
+                        if getattr(self, '_eleven_client', None) is not None:
+                            try:
+                                # SDK convert invocation
+                                res = self._eleven_client.text_to_speech.convert(
+                                    voice_id=voice_id,
+                                    text=tts_data['text'],
+                                    output_format='mp3_44100_128',
+                                )
+                                # Handle common response shapes from SDK
+                                if isinstance(res, (bytes, bytearray)):
+                                    with open(out_name, 'wb') as fh:
+                                        fh.write(res)
+                                    audio_path = out_name
+                                elif hasattr(res, 'read'):
+                                    data = res.read()
+                                    with open(out_name, 'wb') as fh:
+                                        fh.write(data)
+                                    audio_path = out_name
+                                elif isinstance(res, str) and os.path.exists(res):
+                                    # SDK returned a path
+                                    if res != out_name:
+                                        with open(res, 'rb') as src, open(out_name, 'wb') as dst:
+                                            dst.write(src.read())
+                                    audio_path = out_name
+                                elif isinstance(res, dict):
+                                    for k in ('audio', 'audio_content', 'content'):
+                                        if k in res and isinstance(res[k], (bytes, bytearray)):
+                                            with open(out_name, 'wb') as fh:
+                                                fh.write(res[k])
+                                            audio_path = out_name
+                                            break
+                                else:
+                                    # Last resort: try bytes()
+                                    try:
+                                        blob = bytes(res)
+                                        with open(out_name, 'wb') as fh:
+                                            fh.write(blob)
+                                        audio_path = out_name
+                                    except Exception:
+                                        audio_path = None
+                            except Exception as e:
+                                print(f"❌ Persistent ElevenLabs client synthesis failed: {e}")
+
+                        # Fallback to helper which will lazy-import SDK or raise
+                        if not audio_path:
+                            from src.eleven_tts import synthesize_to_file
+                            audio_path = synthesize_to_file(text=tts_data['text'], voice_id=voice_id, output_path=out_name, api_key=api_key)
+                        tts_data['status'] = 'completed'
+                        tts_data['audio_path'] = audio_path
+                        tts_data['synthesis_time'] = time.time()
+                        self.tts_results.append(tts_data)
+                        print(f"✅ TTS completed for id {tts_data.get('id')}: {audio_path}")
+
+                        # Keep tts_results bounded
+                        if len(self.tts_results) > 20:
+                            self.tts_results.pop(0)
+                        # Optionally auto-play the synthesized audio (non-blocking)
+                        if getattr(self, 'auto_play_tts', False):
+                            try:
+                                threading.Thread(target=self._play_audio, args=(audio_path,), daemon=True).start()
+                            except Exception as e:
+                                print(f"❌ TTS autoplay error for id {tts_data.get('id')}: {e}")
+                    except Exception as e:
+                        tts_data['status'] = 'failed'
+                        tts_data['error'] = str(e)
+                        self.tts_results.append(tts_data)
+                        print(f"❌ TTS synthesis error for id {tts_data.get('id')}: {e}")
+
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"❌ TTS worker error: {e}")
+                time.sleep(0.5)
 
     def get_current_sentence(self) -> str:
         """Get the current sentence being built."""
@@ -650,23 +801,78 @@ class RealTimeGestureDetector:
         cv2.destroyAllWindows()
         print("🧹 Cleanup completed")
 
+    def _play_audio(self, path: str):
+        """Play audio file using a best-effort, cross-platform approach.
+
+        This is non-blocking when called in a separate thread. On macOS it uses
+        `afplay`. On Linux it tries `ffplay` (ffmpeg) or `aplay`. On Windows it
+        will try `PowerShell`'s PlaySound via .NET or fallback to `start`.
+        """
+        try:
+            print(f"▶️ Playing audio: {path}")
+            if sys.platform == 'darwin':
+                # macOS
+                player = shutil.which('afplay')
+                if player:
+                    subprocess.run([player, path], check=False)
+                    return
+            elif sys.platform.startswith('linux'):
+                # Linux: try ffplay (from ffmpeg) without console output
+                player = shutil.which('ffplay')
+                if player:
+                    subprocess.run([player, '-nodisp', '-autoexit', '-loglevel', 'quiet', path], check=False)
+                    return
+                player = shutil.which('aplay')
+                if player:
+                    subprocess.run([player, path], check=False)
+                    return
+            elif sys.platform.startswith('win'):
+                # Windows: use PowerShell to play via .NET System.Media.SoundPlayer
+                ps = shutil.which('powershell') or shutil.which('pwsh')
+                if ps:
+                    cmd = [ps, '-NoProfile', '-Command', f"(New-Object Media.SoundPlayer '{path}').PlaySync();"]
+                    subprocess.run(cmd, check=False)
+                    return
+
+            # Last resort: try opening with default application
+            if sys.platform == 'darwin':
+                subprocess.run(['open', path], check=False)
+            elif sys.platform.startswith('linux'):
+                subprocess.run(['xdg-open', path], check=False)
+            elif sys.platform.startswith('win'):
+                subprocess.run(['start', path], shell=True, check=False)
+        except Exception as e:
+            # Non-fatal; just log the issue
+            print(f"❗ Audio playback failed for {path}: {e}")
+
 
 def main():
     """Main function to start gesture detection."""
+    parser = argparse.ArgumentParser(prog="camera_gesture_detection", description="Real-time gesture detector with optional TTS autoplay")
+    parser.add_argument('--auto-play-tts', action='store_true', dest='auto_play_tts', help='Automatically play synthesized TTS audio')
+    parser.add_argument('--tts-short-threshold', type=int, default=0, help='If >0, sentences with <= N words are auto-enqueued to TTS')
+    parser.add_argument('--voice-id', type=str, default=None, help='Default ElevenLabs voice id to use')
+    parser.add_argument('--camera-id', type=int, default=0, help='Camera device id')
+    parser.add_argument('--no-video', action='store_true', help='Run without showing the video window')
+
+    args = parser.parse_args()
+
     print("🚀 Real-time Hand Gesture Detection")
     print("=" * 40)
-    
+
     try:
-        # Initialize detector
-        detector = RealTimeGestureDetector(camera_id=0)
-        
+        detector = RealTimeGestureDetector(camera_id=args.camera_id, auto_play_tts=bool(args.auto_play_tts), tts_auto_enqueue_short_sentences=int(args.tts_short_threshold or 0))
+
+        if args.voice_id:
+            detector.tts_voice_id = args.voice_id
+
         # Start detection
         detector.start_detection(
-            show_video=True,
+            show_video=(not args.no_video),
             print_landmarks=True,
             save_to_file=False
         )
-        
+
     except ValueError as e:
         print(f"❌ Error: {e}")
         print("💡 Make sure your camera is connected and not being used by another application")

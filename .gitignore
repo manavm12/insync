@@ -104,3 +104,4 @@ package-lock.json
 .mypy_cache/
 .dmypy.json
 dmypy.json
+*.mp3

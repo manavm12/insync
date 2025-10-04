@@ -18,6 +18,7 @@ cd hand-landmarks-detection
 python3 -m venv hand_detection_env
 source hand_detection_env/bin/activate
 pip install -r requirements.txt
+pip install elevenlabs
 
 # Start detecting!
 python camera_gesture_detection.py
@@ -398,6 +399,41 @@ The example script includes:
 
 ### Git Workflow
 
+## ElevenLabs TTS integration (optional)
+
+This project can synthesize translated sentences using ElevenLabs TTS. The TTS helper is implemented in `src/eleven_tts.py` and the detector will enqueue translated sentences for synthesis automatically.
+
+Quick notes:
+
+- Set your ElevenLabs API key in the environment: `XI_API_KEY` is required.
+- Optionally set a default voice id in `XI_VOICE_ID` so you don't need to pass a voice id each time.
+- The detector exposes two runtime options when constructing `RealTimeGestureDetector`:
+    - `auto_play_tts` (bool): if True, plays the synthesized audio automatically after synthesis completes.
+    - `tts_auto_enqueue_short_sentences` (int): sentences with word count <= this value are sent directly to TTS.
+
+Example usage:
+
+```python
+from src.hand_landmarks.camera_gesture_detection import RealTimeGestureDetector
+
+# autoplay and auto-enqueue sentences of 2 words or fewer
+detector = RealTimeGestureDetector(auto_play_tts=True, tts_auto_enqueue_short_sentences=2)
+detector.tts_voice_id = "XW70ikSsadUbinwLMZ5w"  # or set XI_VOICE_ID in env
+detector.start_detection()
+```
+
+Environment variables (recommended)
+
+Create a `.env` file (ignored by git) or export in your shell:
+
+```
+export XI_API_KEY="your_real_api_key"
+export XI_VOICE_ID="your_preferred_voice_id"
+```
+
+If you don't set `XI_VOICE_ID`, you can still pass a `voice_id` to `synthesize_to_file` or set `detector.tts_voice_id` at runtime.
+
+
 ```bash
 # Setup for development
 ./git_setup.sh                    # Initialize git and add files
@@ -482,6 +518,19 @@ If you encounter any issues or have questions:
 ## 🙏 Acknowledgments
 
 - **ASL Community**: Thank you to the deaf and hard-of-hearing community for their invaluable feedback and guidance
+
+## CLI Usage
+
+You can run the detector from the command line with these options:
+
+```bash
+python -m src.hand_landmarks.camera_gesture_detection --auto-play-tts --tts-short-threshold 2 --voice-id XW70ikSsadUbinwLMZ5w
+```
+
+- `--auto-play-tts`: automatically play synthesized audio
+- `--tts-short-threshold N`: sentences with <= N words are auto-enqueued to TTS
+- `--voice-id`: default ElevenLabs voice id to use
+
 - **Sign Language Experts**: For helping ensure accurate ASL representation
 - **Google MediaPipe team**: For the excellent hand tracking framework
 - **OpenCV community**: For computer vision tools
