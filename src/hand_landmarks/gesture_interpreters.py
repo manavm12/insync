@@ -330,7 +330,7 @@ class FourFingerInterpreter(BaseGestureInterpreter):
         if not fingers_up[0]:  # All except thumb (Number 4 or Letter B)
             return self._analyze_four_no_thumb(landmarks)
         elif not fingers_up[4]:  # All except pinky
-            return "Four Fingers (No Pinky)"
+            return "Repeat"
         elif not fingers_up[1]:  # All except index
             return "Four Fingers (No Index)"
         elif not fingers_up[2]:  # All except middle

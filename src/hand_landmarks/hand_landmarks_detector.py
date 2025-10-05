@@ -266,7 +266,6 @@ class HandLandmarksDetector:
         # Add detection info
         info_text = f"Hands detected: {results['hands_detected']}"
         cv2.putText(image, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        
         # Add handedness info for each detected hand
         y_offset = 70
         for hand in results['hands']:
