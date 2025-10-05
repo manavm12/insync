@@ -305,8 +305,7 @@ class RealTimeGestureDetector:
         if timestamp is None:
             timestamp = time.time()
 
-        self.current_sentence.append('Unknown Sign')
-        self.last_gesture = 'Unknown Sign'
+        self.last_gesture = None
         self.last_gesture_time = timestamp
         self.last_emitted_gesture_time = timestamp
         self.gesture_history.clear()
@@ -323,7 +322,9 @@ class RealTimeGestureDetector:
         if timestamp is None:
             timestamp = time.time()
 
-        self.current_sentence.append(word)
+        if word:
+            self.current_sentence.append(word)
+
         self.last_gesture = word
         self.last_gesture_time = timestamp
         self.last_emitted_gesture_time = timestamp
@@ -360,8 +361,7 @@ class RealTimeGestureDetector:
 
         if candidate == 'Unknown Gesture':
             if self._pending_confirmed(candidate, timestamp):
-                if timestamp - self.last_emitted_gesture_time >= self.gesture_cooldown_seconds:
-                    self._append_unknown_sign(timestamp)
+                self._append_unknown_sign(timestamp)
             return
 
         if timestamp - self.last_emitted_gesture_time < self.gesture_cooldown_seconds:
@@ -716,7 +716,7 @@ class RealTimeGestureDetector:
     def append_unknown_sign(self) -> str:
         """Expose manual recording of an unrecognized sign."""
         self._append_unknown_sign()
-        return 'Unknown Sign'
+        return ''
 
     def get_recent_translations(self, count: int = 5) -> List[Dict]:
         """Get the most recent translations."""
