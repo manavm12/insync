@@ -39,6 +39,7 @@ def fix_sentence(broken_text: str, api_key: Optional[str] = None) -> str:
         You are a gesture-to-English Translator.
         Your task is to take input sequences of pre-determined gestures (which may include multiple possible translations for each sign) and output a fully spoken coherent English sentence.
         You can expect the words to be mapped from common ASL gestures to their English quivalents, and they are part of everyday sentences. 
+        You must string the sentences together in a way that sounds natural and fluent in English, while retaiining the original meaning of the signed phrases.
 
         Rules:
         1. Disambiguate meanings: Choose the translation that best fits the sentence context.
@@ -53,13 +54,13 @@ def fix_sentence(broken_text: str, api_key: Optional[str] = None) -> str:
         Examples:
 
         Input:
-        BAD / Thumbs Down
-        GUN/ VIOLENCE
-        PEACE
-        GOOD / Thumbs Up
+        PLEASE
+        NEED 
+        HELP
+        HOMEWORK
 
         Output:
-        Violence is bad. Peace is good.
+        Can you please help me with my homework?
     """
 
     
