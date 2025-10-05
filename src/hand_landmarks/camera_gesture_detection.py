@@ -99,6 +99,7 @@ class RealTimeGestureDetector:
         # Display settings
         self.show_raw_gestures = True
         self.show_translations = True
+        self.console_landmark_logging = False  # disable verbose landmark dumps by default
 
     def enable_auto_play(self, enable: bool = True):
         """Toggle automatic playback of synthesized TTS audio."""
@@ -175,7 +176,10 @@ class RealTimeGestureDetector:
                     self._save_current_landmarks(results, advanced_gestures)
                 elif key == ord('p'):
                     print_landmarks = not print_landmarks
-                    print(f"Landmark printing: {'ON' if print_landmarks else 'OFF'}")
+                    status = 'ON' if print_landmarks else 'OFF'
+                    if print_landmarks and not self.console_landmark_logging:
+                        status += " (enable detector.console_landmark_logging to see output)"
+                    print(f"Landmark printing: {status}")
                 elif key == ord('t'):
                     self.show_translations = not self.show_translations
                     print(f"Translation display: {'ON' if self.show_translations else 'OFF'}")
@@ -393,34 +397,45 @@ class RealTimeGestureDetector:
                     
                     # Translate using OpenAI
                     translated_text = fix_sentence(sentence_data['raw_text'])
-                    
-                    sentence_data['translated_text'] = translated_text
-                    sentence_data['status'] = 'completed'
+                    cleaned_text = (translated_text or "").strip()
+
+                    sentence_data['translated_text'] = cleaned_text
                     sentence_data['translation_time'] = time.time()
-                    
+
+                    silent_tokens = {"", "silent", "remain silent", "silence", "[silence]", "[silent]"}
+                    is_silent = cleaned_text.lower() in silent_tokens
+                    sentence_data['status'] = 'silent' if is_silent else 'completed'
+
                     self.translated_sentences.append(sentence_data)
-                    
+
                     if self.show_translations:
-                        print(f"✨ Translation #{sentence_data['id']}: '{translated_text}'")
+                        if is_silent:
+                            print(f"✨ Translation #{sentence_data['id']}: (silent)")
+                        else:
+                            print(f"✨ Translation #{sentence_data['id']}: '{cleaned_text}'")
                     
                     # Keep only last 10 translations to save memory
                     if len(self.translated_sentences) > 10:
                         self.translated_sentences.pop(0)
 
+                    if is_silent:
+                        continue
+
                     # Enqueue for TTS synthesis
-                    try:
-                        tts_entry = {
-                            'id': sentence_data['id'],
-                            'text': sentence_data['translated_text'],
-                            'timestamp': time.time(),
-                            'status': 'queued',
-                            'voice_id': self.tts_voice_id
-                        }
-                        self.tts_queue.append(tts_entry)
-                        print(f"📣 Queued for TTS (TTS Queue size: {len(self.tts_queue)})")
-                    except Exception:
-                        # non-fatal - continue
-                        pass
+                    if cleaned_text:
+                        try:
+                            tts_entry = {
+                                'id': sentence_data['id'],
+                                'text': cleaned_text,
+                                'timestamp': time.time(),
+                                'status': 'queued',
+                                'voice_id': self.tts_voice_id
+                            }
+                            self.tts_queue.append(tts_entry)
+                            print(f"📣 Queued for TTS (TTS Queue size: {len(self.tts_queue)})")
+                        except Exception:
+                            # non-fatal - continue
+                            pass
                 
                 time.sleep(0.1)  # Small delay to prevent busy waiting
                 
@@ -590,6 +605,9 @@ class RealTimeGestureDetector:
 
     def _print_landmarks_advanced(self, results, advanced_gestures, frame_count):
         """Print landmark coordinates and advanced gesture info to console."""
+        if not self.console_landmark_logging:
+            return
+
         print(f"\n📊 Frame {frame_count} - Hands: {results['hands_detected']}")
 
         for i, hand in enumerate(results['hands']):
@@ -614,6 +632,9 @@ class RealTimeGestureDetector:
     
     def _print_landmarks(self, results, gestures, frame_count):
         """Print landmark coordinates to console (basic version)."""
+        if not self.console_landmark_logging:
+            return
+
         print(f"\n📊 Frame {frame_count} - Hands: {results['hands_detected']}")
         
         for i, hand in enumerate(results['hands']):
