@@ -17,7 +17,7 @@ import subprocess
 import shutil
 import sys
 import argparse
-from collections import deque
+from collections import deque, Counter
 import os
 
 class RealTimeGestureDetector:
@@ -100,6 +100,19 @@ class RealTimeGestureDetector:
         self.show_raw_gestures = True
         self.show_translations = True
         self.console_landmark_logging = False  # disable verbose landmark dumps by default
+
+        # Gesture smoothing parameters
+        self.gesture_window_size = 14
+        self.gesture_min_consensus = 0.75
+        self.gesture_cooldown_seconds = 0.8
+        self.gesture_transition_min_frames = 5
+        self.gesture_confidence_threshold = 0.75
+        self.gesture_margin_threshold = 0.15
+        self.gesture_pending_hold_seconds = 0.4
+        self.gesture_pending_label = None
+        self.gesture_pending_start = 0.0
+        self.gesture_history = deque(maxlen=self.gesture_window_size)
+        self.last_emitted_gesture_time = 0.0
 
     def enable_auto_play(self, enable: bool = True):
         """Toggle automatic playback of synthesized TTS audio."""
@@ -270,37 +283,148 @@ class RealTimeGestureDetector:
     def _update_sentence_buffer(self, advanced_gestures):
         """Add new gesture word to current sentence when it changes."""
         if not advanced_gestures:
-            self._append_unknown_sign()
+            self._register_gesture_observation('Unknown Gesture', confidence=0.0)
             return
 
         primary = advanced_gestures[0]
         new_word = primary.get('gesture') if isinstance(primary, dict) else None
+        if not new_word:
+            new_word = 'Unknown Gesture'
 
-        if not new_word or new_word == 'Unknown Gesture':
-            self._append_unknown_sign()
-            return
+        confidence = None
+        if isinstance(primary, dict):
+            confidence = primary.get('confidence')
 
-        if new_word != self.last_gesture:
-            self.current_sentence.append(new_word)
-            self.last_gesture = new_word
-            self.last_gesture_time = time.time()
-            
-            if self.show_raw_gestures:
-                print(f"📝 Gesture: {new_word}")
-                print(f"🔤 Current sentence: {' '.join(self.current_sentence)}")
+        self._register_gesture_observation(new_word, confidence)
 
-    def _append_unknown_sign(self):
+    def _append_unknown_sign(self, timestamp: Optional[float] = None):
         """Record an unknown sign placeholder when recognition fails."""
         if self.last_gesture == 'Unknown Sign':
             return
 
+        if timestamp is None:
+            timestamp = time.time()
+
         self.current_sentence.append('Unknown Sign')
         self.last_gesture = 'Unknown Sign'
-        self.last_gesture_time = time.time()
+        self.last_gesture_time = timestamp
+        self.last_emitted_gesture_time = timestamp
+        self.gesture_history.clear()
+        self.gesture_pending_label = None
+        self.gesture_pending_start = 0.0
 
         if self.show_raw_gestures:
             print("📝 Gesture: Unknown Sign")
             print(f"🔤 Current sentence: {' '.join(self.current_sentence)}")
+
+    def _emit_gesture_word(self, word: str, timestamp: Optional[float] = None):
+        if not word:
+            return
+        if timestamp is None:
+            timestamp = time.time()
+
+        self.current_sentence.append(word)
+        self.last_gesture = word
+        self.last_gesture_time = timestamp
+        self.last_emitted_gesture_time = timestamp
+        self.gesture_history.clear()
+        self.gesture_pending_label = None
+        self.gesture_pending_start = 0.0
+
+        if self.show_raw_gestures:
+            print(f"📝 Gesture: {word}")
+            print(f"🔤 Current sentence: {' '.join(self.current_sentence)}")
+
+    def _register_gesture_observation(self, gesture_label: str, confidence: Optional[float] = None):
+        timestamp = time.time()
+        label = gesture_label or 'Unknown Gesture'
+
+        if label != 'Unknown Gesture' and confidence is not None:
+            try:
+                if confidence < self.gesture_confidence_threshold:
+                    label = 'Unknown Gesture'
+            except Exception:
+                label = 'Unknown Gesture'
+
+        self.gesture_history.append(label)
+
+        if len(self.gesture_history) < self.gesture_window_size:
+            return
+
+        candidate, ratio = self._get_gesture_consensus()
+        if not candidate or ratio < self.gesture_min_consensus:
+            return
+
+        if not self._has_sufficient_margin(candidate):
+            return
+
+        if candidate == 'Unknown Gesture':
+            if self._pending_confirmed(candidate, timestamp):
+                if timestamp - self.last_emitted_gesture_time >= self.gesture_cooldown_seconds:
+                    self._append_unknown_sign(timestamp)
+            return
+
+        if timestamp - self.last_emitted_gesture_time < self.gesture_cooldown_seconds:
+            return
+
+        if candidate == self.last_gesture:
+            return
+
+        if not self._has_substantial_transition(candidate):
+            return
+
+        if not self._pending_confirmed(candidate, timestamp):
+            return
+
+        self._emit_gesture_word(candidate, timestamp)
+
+    def _get_gesture_consensus(self):
+        if not self.gesture_history:
+            return None, 0.0
+
+        counts = Counter(self.gesture_history)
+        candidate, count = counts.most_common(1)[0]
+
+        if candidate == 'Unknown Gesture' and len(counts) > 1:
+            for label, cnt in counts.most_common():
+                if label != 'Unknown Gesture' and cnt == count:
+                    candidate, count = label, cnt
+                    break
+
+        ratio = count / len(self.gesture_history)
+        return candidate, ratio
+
+    def _has_sufficient_margin(self, candidate: str) -> bool:
+        counts = Counter(self.gesture_history)
+        top = counts.get(candidate, 0)
+        if len(counts) == 1:
+            return True
+        second = 0
+        for label, cnt in counts.most_common(2):
+            if label != candidate:
+                second = cnt
+                break
+        margin = (top - second) / len(self.gesture_history)
+        return margin >= self.gesture_margin_threshold
+
+    def _has_substantial_transition(self, candidate: str) -> bool:
+        if self.last_gesture is None:
+            return True
+        if candidate == self.last_gesture:
+            return False
+
+        distinct_frames = sum(1 for label in self.gesture_history if label != self.last_gesture)
+        return distinct_frames >= self.gesture_transition_min_frames
+
+    def _pending_confirmed(self, candidate: str, timestamp: float) -> bool:
+        if self.gesture_pending_label == candidate:
+            if (timestamp - self.gesture_pending_start) >= self.gesture_pending_hold_seconds:
+                return True
+            return False
+
+        self.gesture_pending_label = candidate
+        self.gesture_pending_start = timestamp
+        return False
 
     def _check_sentence_timeout(self):
         """Check if sentence should be completed due to timeout."""
@@ -363,6 +487,10 @@ class RealTimeGestureDetector:
         self.translation_running = False
         self.tts_running = False
         self.audio_running = False
+        self.gesture_history.clear()
+        self.last_emitted_gesture_time = 0.0
+        self.gesture_pending_label = None
+        self.gesture_pending_start = 0.0
 
     def _start_translation_thread(self):
         """Start the background translation thread."""
