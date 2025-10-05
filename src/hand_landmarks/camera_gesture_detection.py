@@ -782,7 +782,7 @@ class RealTimeGestureDetector:
         
         # Add detection info
         cv2.putText(annotated_frame, f"Hands: {results['hands_detected']}", 
-                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 128, 0), 2)
         
         # Add advanced gesture info
         y_offset = 70
@@ -843,7 +843,7 @@ class RealTimeGestureDetector:
         
         # Add detection info
         cv2.putText(annotated_frame, f"Hands: {results['hands_detected']}", 
-                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 128, 0), 2)
         
         # Add gesture info
         y_offset = 70

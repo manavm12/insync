@@ -408,8 +408,8 @@ Quick notes:
 - Set your ElevenLabs API key in the environment: `XI_API_KEY` is required.
 - Optionally set a default voice id in `XI_VOICE_ID` so you don't need to pass a voice id each time.
 - The detector exposes two runtime options when constructing `RealTimeGestureDetector`:
-    - `auto_play_tts` (bool): if True, plays the synthesized audio automatically after synthesis completes.
-    - `tts_auto_enqueue_short_sentences` (int): sentences with word count <= this value are sent directly to TTS.
+  - `auto_play_tts` (bool): if True, plays the synthesized audio automatically after synthesis completes.
+  - `tts_auto_enqueue_short_sentences` (int): sentences with word count <= this value are sent directly to TTS.
 
 Example usage:
 
@@ -432,7 +432,6 @@ export XI_VOICE_ID="your_preferred_voice_id"
 ```
 
 If you don't set `XI_VOICE_ID`, you can still pass a `voice_id` to `synthesize_to_file` or set `detector.tts_voice_id` at runtime.
-
 
 ```bash
 # Setup for development
