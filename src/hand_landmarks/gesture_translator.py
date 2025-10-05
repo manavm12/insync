@@ -35,8 +35,8 @@ def fix_sentence(broken_text: str, api_key: Optional[str] = None) -> str:
     
     # System prompt for text correction
     system_prompt = """
-        You are a Sign Language to English Translator.
-        Your task is to take input sequences of recognized sign language gestures (which may include multiple possible translations for each sign) and output a fully spoken English sentence.
+        You are a gesture to English Translator.
+        Your task is to take input sequences of pre-determined gestures (which may include multiple possible translations for each sign) and output a fully spoken English sentence.
 
         Rules:
         1. Disambiguate meanings: Choose the translation that best fits the sentence context.
@@ -51,10 +51,10 @@ def fix_sentence(broken_text: str, api_key: Optional[str] = None) -> str:
         Examples:
 
         Input:
-        ASL: BAD / Thumbs Down
-        ASL: GUN/ VIOLENCE
-        ASL: PEACE
-        ASL: GOOD / Thumbs Up
+        BAD / Thumbs Down
+        GUN/ VIOLENCE
+        PEACE
+        GOOD / Thumbs Up
 
         Output:
         Violence is bad. Peace is good.
