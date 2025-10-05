@@ -178,11 +178,11 @@ class OneFingerInterpreter(BaseGestureInterpreter):
         elif fingers_up[1]:  # Only index
             return self._analyze_index_gesture(landmarks)
         elif fingers_up[2]:  # Only middle
-            return "Single Middle Finger"
+            return "Need"
         elif fingers_up[3]:  # Only ring
-            return "Single Ring Finger"
+            return "Help"
         elif fingers_up[4]:  # Only pinky
-            return "Single Pinky"
+            return "Homework"
         
         return "Single Finger Up"
     
@@ -194,7 +194,7 @@ class OneFingerInterpreter(BaseGestureInterpreter):
         
         # Check if thumb is pointing up or down
         if thumb_tip_y < wrist_y and thumb_tip_y < thumb_mcp_y:
-            return "GOOD / Number 10"
+            return "GOOD"
         elif thumb_tip_y > wrist_y and thumb_tip_y > thumb_mcp_y:
             return "BAD / Thumbs Down"
         else:
@@ -209,7 +209,7 @@ class OneFingerInterpreter(BaseGestureInterpreter):
         if index_tip['y'] < wrist['y']:
             return "Number 1"
         else:
-            return "POINTING / GO (motion needed)"
+            return "GO"
 
 
 class TwoFingerInterpreter(BaseGestureInterpreter):
@@ -356,8 +356,6 @@ class FourFingerInterpreter(BaseGestureInterpreter):
             
             if total_spread > 0.15:
                 return "Number 4"
-            else:
-                return "Four Fingers Together"
         else:
             return "Four Fingers Extended"
 
@@ -505,110 +503,3 @@ class GestureInterpreterFactory:
                 "Alphabet letters have been removed to focus on practical communication words."
             ]
         }
-
-
-# ============================================================================
-# ASL GESTURE VOCABULARY REFERENCE
-# ============================================================================
-"""
-SUPPORTED ASL GESTURES AND SIGNS
-
-This module currently recognizes the following ASL gestures based on static
-hand shapes. For complete ASL interpretation, motion tracking and facial
-expressions should be added.
-
-NUMBERS (0-10):
----------------
-0: Closed fist forming 'O' shape
-1: Index finger pointing up
-2: Index + middle fingers in V-shape (Peace sign)
-3: Index + middle + ring fingers
-4: Four fingers spread, thumb tucked in
-5: All five fingers spread open
-10: Thumbs up / "GOOD" gesture
-
-COMMON WORDS & PHRASES (Static hand shapes):
---------------------------------------------
-HELLO/HI: Open palm raised near forehead, palm facing out
-STOP/WAIT: Open palm facing forward
-I LOVE YOU: Thumb + index + pinky extended, palm out
-GOOD: Thumbs up (Number 10)
-BAD: Thumbs down
-OK/FINE: Thumb and index forming circle
-PEACE: Index + middle forming V-shape
-
-WORDS REQUIRING MOTION (Currently shows hand shape only):
----------------------------------------------------------
-THANK YOU: Open palm near lips (needs forward motion)
-PLEASE: Open palm on chest (needs circular motion)
-SORRY: Fist on chest (needs circular motion)
-YES: Fist (needs nodding motion)
-NO: Three fingers closing together (needs motion)
-HELP: Fist on palm (needs lifting motion)
-EAT: Fingertips together (needs motion to mouth)
-DRINK: C-shape (needs motion to mouth)
-WATER: W-sign (needs motion at chin)
-MORE: Fingertips together (needs tapping motion)
-WANT: Open palms (needs pulling toward body motion)
-GO: Pointing (needs forward motion)
-COME: Pointing (needs inward motion)
-
-EMOTIONS & STATES:
------------------
-HAPPY: Hands brushing up on chest (needs motion)
-SAD: Hands moving down face (needs motion)
-ANGRY: Claw shape at face (needs motion)
-EXCITED: Alternating circular motion on chest (needs motion)
-
-IMPLEMENTATION NOTES:
---------------------
-1. Current implementation detects STATIC hand shapes
-2. For motion-based signs (marked above), the hand shape is detected,
-   but motion tracking needs to be added for full recognition
-3. Facial expressions are CRITICAL in ASL for:
-   - Distinguishing questions from statements
-   - Showing emotions and intensity
-   - Grammatical markers
-4. Body language adds context and emphasis
-
-RECOMMENDATIONS FOR FULL ASL SUPPORT:
-------------------------------------
-1. Upgrade from MediaPipe Hands to MediaPipe Holistic for:
-   - Hand tracking (already implemented)
-   - Facial landmark detection (468 face landmarks)
-   - Pose estimation (33 body landmarks)
-
-2. Add temporal tracking to detect motion patterns:
-   - Track landmark positions over multiple frames
-   - Calculate velocity and direction of movement
-   - Recognize circular, linear, and complex motion patterns
-
-3. Implement facial expression recognition:
-   - Eyebrow position (raised = question)
-   - Mouth shape (important for many signs)
-   - Head tilt and nods
-   - Eye gaze direction
-
-4. Add two-hand gesture recognition:
-   - Many ASL signs require both hands
-   - Track relative positions and movements
-
-5. Build a vocabulary expansion system:
-   - Allow users to teach new signs
-   - Create personal gesture libraries
-   - Regional sign variations
-
-USAGE EXAMPLE:
--------------
-from gesture_interpreters import GestureInterpreterFactory
-
-factory = GestureInterpreterFactory()
-
-# Get list of supported gestures
-supported = factory.get_supported_gestures()
-print("Supported ASL gestures:", supported)
-
-# Interpret a gesture
-gesture = factory.interpret_gesture(landmarks, fingers_up, finger_count, handedness)
-print(f"Detected gesture: {gesture}")
-"""
