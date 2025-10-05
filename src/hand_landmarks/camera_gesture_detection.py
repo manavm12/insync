@@ -50,7 +50,7 @@ class RealTimeGestureDetector:
         self.current_sentence = []
         self.last_gesture = None
         self.last_gesture_time = 0
-        self.sentence_timeout = 5.0  # seconds to complete a sentence
+        self.sentence_timeout = 3.0  # seconds to complete a sentence
 
         # Translation queue and results
         self.sentence_queue = deque()
@@ -298,23 +298,20 @@ class RealTimeGestureDetector:
         self._register_gesture_observation(new_word, confidence)
 
     def _append_unknown_sign(self, timestamp: Optional[float] = None):
-        """Record an unknown sign placeholder when recognition fails."""
-        if self.last_gesture == 'Unknown Sign':
-            return
-
+        """Clear gesture state when recognition is uncertain or no hands are present."""
         if timestamp is None:
             timestamp = time.time()
 
+        if self.last_gesture_time == 0.0:
+            self.last_gesture_time = timestamp
+
         self.last_gesture = None
-        self.last_gesture_time = timestamp
-        self.last_emitted_gesture_time = timestamp
         self.gesture_history.clear()
         self.gesture_pending_label = None
         self.gesture_pending_start = 0.0
 
         if self.show_raw_gestures:
-            print("📝 Gesture: Unknown Sign")
-            print(f"🔤 Current sentence: {' '.join(self.current_sentence)}")
+            print("📝 Gesture cleared (no confident sign)")
 
     def _emit_gesture_word(self, word: str, timestamp: Optional[float] = None):
         if not word:
@@ -489,6 +486,8 @@ class RealTimeGestureDetector:
         self.audio_running = False
         self.gesture_history.clear()
         self.last_emitted_gesture_time = 0.0
+        self.last_gesture_time = 0.0
+        self.last_gesture = None
         self.gesture_pending_label = None
         self.gesture_pending_start = 0.0
 
