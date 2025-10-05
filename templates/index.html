@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Gesture Detection System</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm mb-4">
+            <div class="container-fluid">
+                <span class="navbar-brand mb-0 h1 fw-bold">
+                    <i class="fas fa-hand-paper me-2 text-primary"></i>
+                    <span class="text-gradient">Hand Gesture Detection</span>
+                </span>
+                <div class="d-flex align-items-center">
+                    <span id="systemStatus" class="badge bg-secondary me-3 px-3 py-2">Stopped</span>
+                    <button id="startBtn" class="btn btn-success btn-sm me-2 px-3">
+                        <i class="fas fa-play me-1"></i> Start
+                    </button>
+                    <button id="stopBtn" class="btn btn-danger btn-sm me-2 px-3" disabled>
+                        <i class="fas fa-stop me-1"></i> Stop
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="row">
+            <!-- Left Column: Camera and Controls -->
+            <div class="col-lg-8">
+                <!-- Camera Feed -->
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-video me-2"></i>Live Camera Feed
+                        </h5>
+                        <div class="d-flex align-items-center">
+                            <span class="badge bg-info me-2" id="handsDetected">0 hands</span>
+                            <span class="badge bg-primary" id="currentGesture">None</span>
+                        </div>
+                    </div>
+                    <div class="card-body text-center">
+                        <div id="cameraContainer" class="position-relative">
+                            <img id="videoFeed" src="/video_feed" alt="Camera Feed" class="img-fluid rounded shadow" style="max-width: 100%; height: auto;">
+                            <div id="cameraOverlay" class="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-dark bg-opacity-50 text-white">
+                                <div class="text-center">
+                                    <i class="fas fa-video-slash fa-3x mb-3"></i>
+                                    <h4>Camera Stopped</h4>
+                                    <p>Click Start to begin detection</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Current Sentence -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-comment-dots me-2"></i>Current Sentence
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="currentSentence" class="sentence-display p-3 bg-light rounded">
+                            <em class="text-muted">No sentence being built...</em>
+                        </div>
+                        <div class="mt-3">
+                            <button id="forceSentenceBtn" class="btn btn-warning btn-sm me-2" disabled>
+                                <i class="fas fa-forward"></i> Complete Sentence
+                            </button>
+                            <button id="clearSentencesBtn" class="btn btn-outline-danger btn-sm" disabled>
+                                <i class="fas fa-trash"></i> Clear All
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Panel -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-sliders-h me-2"></i>Controls
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6><i class="fas fa-volume-up me-2"></i>Audio Controls</h6>
+                                <button id="cancelAudioBtn" class="btn btn-outline-warning btn-sm me-2" disabled>
+                                    <i class="fas fa-stop-circle"></i> Cancel Audio
+                                </button>
+                                <div id="audioStatus" class="mt-2">
+                                    <div class="d-flex align-items-center">
+                                        <div class="audio-indicator me-2">
+                                            <i class="fas fa-volume-up" id="audioIcon"></i>
+                                        </div>
+                                        <small class="text-muted">Status: <span id="audioState" class="fw-bold">Idle</span></small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Custom Speech</h6>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" id="customText" class="form-control" placeholder="Enter text to speak..." disabled>
+                                    <button id="speakBtn" class="btn btn-outline-primary" disabled>
+                                        <i class="fas fa-volume-up"></i> Speak
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Information Panels -->
+            <div class="col-lg-4">
+                <!-- Recent Translations -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-language me-2"></i>Recent Translations
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="translationsList" class="translations-list">
+                            <div class="text-muted text-center py-3">
+                                <i class="fas fa-language fa-2x mb-2"></i>
+                                <p class="mb-0">No translations yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hand Landmarks -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-hand-point-up me-2"></i>Hand Landmarks
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="landmarksList" class="landmarks-list">
+                            <div class="text-muted text-center py-3">
+                                <i class="fas fa-hand-paper fa-2x mb-2"></i>
+                                <p class="mb-0">No hands detected</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Information -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-info-circle me-2"></i>System Info
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="stat-item">
+                                    <div class="stat-value" id="handsCount">0</div>
+                                    <div class="stat-label">Hands</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="stat-item">
+                                    <div class="stat-value" id="translationsCount">0</div>
+                                    <div class="stat-label">Translations</div>
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="small text-muted">
+                            <div><strong>Status:</strong> <span id="detailedStatus">System stopped</span></div>
+                            <div><strong>Current Gesture:</strong> <span id="detailedGesture">None</span></div>
+                            <div><strong>Audio Queue:</strong> <span id="audioQueue">0 items</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="notificationToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i class="fas fa-bell me-2"></i>
+                <strong class="me-auto">Notification</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="toastMessage">
+                <!-- Toast message will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
