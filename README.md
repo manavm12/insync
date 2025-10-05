@@ -5,7 +5,7 @@
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.8.1-red.svg)](https://opencv.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A comprehensive Python implementation for **real-time American Sign Language (ASL) interpretation** using Google's MediaPipe framework. Designed to help the hearing-impaired communicate by recognizing **40+ ASL signs** including numbers, letters, and common phrases. This project provides real-time hand tracking, ASL gesture recognition, and detailed landmark analysis capabilities.
+A comprehensive Python implementation for **real-time American Sign Language (ASL) interpretation** using Google's MediaPipe framework. Designed to help the hearing-impaired communicate by recognizing common hand gestures and stringing them into coherent messages via OpenAI API calls. This project provides real-time hand tracking, ASL gesture recognition, and detailed landmark analysis capabilities.
 
 **🎯 Primary Use Case**: Enable hearing-impaired individuals to sign into a camera and receive real-time text output of ASL keywords and phrases for effective communication.
 
@@ -32,7 +32,6 @@ python camera_gesture_detection.py
 - **Common Phrases**: HELLO, GOODBYE, THANK YOU, PLEASE, SORRY, I LOVE YOU, PEACE
 - **Essential Words**: HELP, STOP, WAIT, GOOD, BAD, OK, FINE, YES, NO, POINTING
 - **Everyday Needs**: EAT, DRINK, WATER, BATHROOM, MORE, WANT, NEED, GO, COME, CALL ME
-- **Emotions**: HAPPY, SAD, ANGRY, EXCITED
 
 ### 📊 Recognition Capabilities
 
