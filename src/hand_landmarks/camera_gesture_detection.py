@@ -64,6 +64,13 @@ class RealTimeGestureDetector:
         self.tts_thread = None
         self.tts_running = False
 
+        # Audio playback queue and control for synchronous playback
+        self.audio_queue = deque()
+        self.audio_thread = None
+        self.audio_running = False
+        self.current_audio_playing = None
+        self.audio_cancelled = False
+
         # Default voice id for ElevenLabs TTS; can be overridden via env or parameter
         self.tts_voice_id = os.getenv("XI_VOICE_ID")
 
@@ -120,11 +127,13 @@ class RealTimeGestureDetector:
         print("  'r' - Toggle raw gesture display")
         print("  'c' - Clear all sentences and translations")
         print("  'n' - Force new sentence (don't wait for timeout)")
+        print("  'x' - Cancel current audio and clear audio queue")
         print("  SPACE - Capture and analyze current frame")
 
         self._reset_sentence_system()
         self._start_translation_thread()
         self._start_tts_thread()
+        self._start_audio_thread()
         self.running = True
         frame_count = 0
 
@@ -177,6 +186,8 @@ class RealTimeGestureDetector:
                     self._clear_all_sentences()
                 elif key == ord('n'):
                     self._force_new_sentence()
+                elif key == ord('x'):
+                    self.cancel_current_audio()
                 elif key == ord(' '):
                     self._detailed_analysis_advanced(results, advanced_gestures)
 
@@ -346,6 +357,8 @@ class RealTimeGestureDetector:
         """Reset the entire sentence system."""
         self._clear_all_sentences()
         self.translation_running = False
+        self.tts_running = False
+        self.audio_running = False
 
     def _start_translation_thread(self):
         """Start the background translation thread."""
@@ -360,6 +373,13 @@ class RealTimeGestureDetector:
         self.tts_thread = threading.Thread(target=self._tts_worker, daemon=True)
         self.tts_thread.start()
         print("🔊 TTS service started")
+
+    def _start_audio_thread(self):
+        """Start the background audio playback thread."""
+        self.audio_running = True
+        self.audio_thread = threading.Thread(target=self._audio_worker, daemon=True)
+        self.audio_thread.start()
+        print("🎵 Audio playback service started")
 
     def _translation_worker(self):
         """Background worker to process translation queue."""
@@ -497,10 +517,18 @@ class RealTimeGestureDetector:
                         # Keep tts_results bounded
                         if len(self.tts_results) > 20:
                             self.tts_results.pop(0)
-                        # Optionally auto-play the synthesized audio (non-blocking)
+                        # Optionally auto-play the synthesized audio (synchronous)
                         if getattr(self, 'auto_play_tts', False):
                             try:
-                                threading.Thread(target=self._play_audio, args=(audio_path,), daemon=True).start()
+                                # Queue audio for synchronous playback
+                                audio_entry = {
+                                    'id': tts_data.get('id'),
+                                    'path': audio_path,
+                                    'timestamp': time.time(),
+                                    'text': tts_data.get('text', '')
+                                }
+                                self.audio_queue.append(audio_entry)
+                                print(f"🎵 Queued audio for playback (Audio Queue size: {len(self.audio_queue)})")
                             except Exception as e:
                                 print(f"❌ TTS autoplay error for id {tts_data.get('id')}: {e}")
                     except Exception as e:
@@ -512,6 +540,30 @@ class RealTimeGestureDetector:
                 time.sleep(0.1)
             except Exception as e:
                 print(f"❌ TTS worker error: {e}")
+                time.sleep(0.5)
+
+    def _audio_worker(self):
+        """Background worker that plays audio files synchronously from the queue."""
+        while self.audio_running:
+            try:
+                if self.audio_queue:
+                    audio_data = self.audio_queue.popleft()
+                    self.current_audio_playing = audio_data
+                    self.audio_cancelled = False
+                    
+                    print(f"🎵 Playing audio for id {audio_data.get('id')}: '{audio_data.get('text', '')[:60]}'")
+                    
+                    # Play audio synchronously (blocking)
+                    self._play_audio_sync(audio_data['path'])
+                    
+                    # Mark as completed
+                    self.current_audio_playing = None
+                    print(f"✅ Audio playback completed for id {audio_data.get('id')}")
+                
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"❌ Audio worker error: {e}")
+                self.current_audio_playing = None
                 time.sleep(0.5)
 
     def get_current_sentence(self) -> str:
@@ -526,6 +578,15 @@ class RealTimeGestureDetector:
     def get_recent_translations(self, count: int = 5) -> List[Dict]:
         """Get the most recent translations."""
         return self.translated_sentences[-count:] if self.translated_sentences else []
+
+    def get_audio_status(self) -> Dict:
+        """Get current audio playback status."""
+        return {
+            'is_playing': self.current_audio_playing is not None,
+            'current_audio': self.current_audio_playing,
+            'queue_size': len(self.audio_queue),
+            'cancelled': self.audio_cancelled
+        }
 
     def _print_landmarks_advanced(self, results, advanced_gestures, frame_count):
         """Print landmark coordinates and advanced gesture info to console."""
@@ -617,7 +678,7 @@ class RealTimeGestureDetector:
         # Add instructions
         instructions = [
             "q:quit s:save t:toggle-trans r:toggle-raw",
-            "c:clear n:new-sentence SPACE:analysis"
+            "c:clear n:new-sentence x:cancel-audio SPACE:analysis"
         ]
         
         for i, instruction in enumerate(instructions):
@@ -811,15 +872,65 @@ class RealTimeGestureDetector:
         """Clean up resources."""
         self.running = False
         self.translation_running = False
+        self.tts_running = False
+        self.audio_running = False
         
-        # Wait for translation thread to finish
+        # Wait for threads to finish
         if self.translation_thread and self.translation_thread.is_alive():
             self.translation_thread.join(timeout=2.0)
+        if self.tts_thread and self.tts_thread.is_alive():
+            self.tts_thread.join(timeout=2.0)
+        if self.audio_thread and self.audio_thread.is_alive():
+            self.audio_thread.join(timeout=2.0)
         
         if self.cap:
             self.cap.release()
         cv2.destroyAllWindows()
         print("🧹 Cleanup completed")
+
+    def _play_audio_sync(self, path: str):
+        """Play audio file synchronously using a best-effort, cross-platform approach.
+
+        This is blocking and will wait for the audio to finish playing. On macOS it uses
+        `afplay`. On Linux it tries `ffplay` (ffmpeg) or `aplay`. On Windows it
+        will try `PowerShell`'s PlaySound via .NET or fallback to `start`.
+        """
+        try:
+            print(f"▶️ Playing audio: {path}")
+            if sys.platform == 'darwin':
+                # macOS
+                player = shutil.which('afplay')
+                if player:
+                    subprocess.run([player, path], check=False)
+                    return
+            elif sys.platform.startswith('linux'):
+                # Linux: try ffplay (from ffmpeg) without console output
+                player = shutil.which('ffplay')
+                if player:
+                    subprocess.run([player, '-nodisp', '-autoexit', '-loglevel', 'quiet', path], check=False)
+                    return
+                player = shutil.which('aplay')
+                if player:
+                    subprocess.run([player, path], check=False)
+                    return
+            elif sys.platform.startswith('win'):
+                # Windows: use PowerShell to play via .NET System.Media.SoundPlayer
+                ps = shutil.which('powershell') or shutil.which('pwsh')
+                if ps:
+                    cmd = [ps, '-NoProfile', '-Command', f"(New-Object Media.SoundPlayer '{path}').PlaySync();"]
+                    subprocess.run(cmd, check=False)
+                    return
+
+            # Last resort: try opening with default application
+            if sys.platform == 'darwin':
+                subprocess.run(['open', path], check=False)
+            elif sys.platform.startswith('linux'):
+                subprocess.run(['xdg-open', path], check=False)
+            elif sys.platform.startswith('win'):
+                subprocess.run(['start', path], shell=True, check=False)
+        except Exception as e:
+            # Non-fatal; just log the issue
+            print(f"❗ Audio playback failed for {path}: {e}")
 
     def _play_audio(self, path: str):
         """Play audio file using a best-effort, cross-platform approach.
@@ -864,6 +975,21 @@ class RealTimeGestureDetector:
         except Exception as e:
             # Non-fatal; just log the issue
             print(f"❗ Audio playback failed for {path}: {e}")
+
+    def cancel_current_audio(self):
+        """Cancel the currently playing audio and clear the queue."""
+        if self.current_audio_playing:
+            print(f"🛑 Cancelling audio playback for id {self.current_audio_playing.get('id')}")
+            self.audio_cancelled = True
+        
+        # Clear the audio queue
+        queue_size = len(self.audio_queue)
+        self.audio_queue.clear()
+        if queue_size > 0:
+            print(f"🗑️ Cleared {queue_size} queued audio files")
+        
+        # Reset current audio
+        self.current_audio_playing = None
 
 
 def main():

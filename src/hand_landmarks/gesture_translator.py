@@ -45,6 +45,7 @@ def fix_sentence(broken_text: str, api_key: Optional[str] = None) -> str:
         4. Preserve meaning: Keep the original intent of the signed phrase.
         5. Sound natural: Write sentences that flow like natural spoken English.
         6. Keep it concise: Avoid redundant or literal translations that feel awkward.
+        7. If there is ONLY an unknown signal in this round of input, remain silent
 
         Examples:
 
