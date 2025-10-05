@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InSync - Gesture Detection Interface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            align-items: start;
+        }
+
+        .camera-section {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .camera-container {
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        #video-feed {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .camera-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .info-panel {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .info-section {
+            margin-bottom: 25px;
+        }
+
+        .info-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 5px;
+        }
+
+        .current-sentence {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 60px;
+            font-size: 1.1em;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .current-sentence.empty {
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .translations-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .translation-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .translation-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .translation-item.completed {
+            border-left: 4px solid #28a745;
+        }
+
+        .translation-item.silent {
+            border-left: 4px solid #ffc107;
+        }
+
+        .translation-item.failed {
+            border-left: 4px solid #dc3545;
+        }
+
+        .translation-text {
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+
+        .translation-meta {
+            font-size: 0.9em;
+            color: #6c757d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .play-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+
+        .play-btn:hover {
+            background: #0056b3;
+        }
+
+        .play-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-indicator.online {
+            background: #28a745;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+        }
+
+        .status-indicator.offline {
+            background: #dc3545;
+        }
+
+        .status-indicator.processing {
+            background: #ffc107;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .audio-status {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 0.9em;
+        }
+
+        .navigation {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            margin: 0 15px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: rgba(255,255,255,0.4);
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .camera-controls {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤟 InSync</h1>
+            <p>Real-time Gesture Detection & Translation</p>
+        </div>
+
+        <div class="navigation">
+            <a href="/" class="nav-link active">📹 Camera</a>
+            <a href="/mappings" class="nav-link">⚙️ Custom Mappings</a>
+        </div>
+
+        <div class="main-content">
+            <div class="camera-section">
+                <div class="camera-container">
+                    <img id="video-feed" src="/video_feed" alt="Camera Feed">
+                </div>
+
+                <div class="camera-controls">
+                    <button id="start-btn" class="btn btn-primary">🎥 Start Camera</button>
+                    <button id="stop-btn" class="btn btn-secondary" disabled>⏹️ Stop Camera</button>
+                    <button id="force-sentence-btn" class="btn btn-success" disabled>✅ Complete Sentence</button>
+                    <button id="clear-btn" class="btn btn-danger" disabled>🗑️ Clear All</button>
+                </div>
+
+                <div class="info-section">
+                    <h3>📊 Detection Status</h3>
+                    <div id="detection-status">
+                        <span class="status-indicator offline"></span>
+                        <span>Camera Offline</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-panel">
+                <div class="info-section">
+                    <h3>📝 Current Sentence</h3>
+                    <div id="current-sentence" class="current-sentence empty">
+                        No sentence being built...
+                    </div>
+                </div>
+
+                <div class="info-section">
+                    <h3>🔊 Recent Translations</h3>
+                    <div id="translations-list" class="translations-list">
+                        <div class="translation-item">
+                            <div class="translation-text">No translations yet</div>
+                            <div class="translation-meta">Start gesturing to see translations</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-section">
+                    <h3>🎵 Audio Status</h3>
+                    <div id="audio-status" class="audio-status">
+                        <div>Status: <span id="audio-playing">Not playing</span></div>
+                        <div>Queue: <span id="audio-queue">0 items</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        // DOM elements
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const forceSentenceBtn = document.getElementById('force-sentence-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const currentSentenceDiv = document.getElementById('current-sentence');
+        const translationsList = document.getElementById('translations-list');
+        const detectionStatus = document.getElementById('detection-status');
+        const audioPlaying = document.getElementById('audio-playing');
+        const audioQueue = document.getElementById('audio-queue');
+
+        let isDetecting = false;
+
+        // Socket event handlers
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            updateDetectionStatus('connected');
+        });
+
+        socket.on('disconnect', function() {
+            console.log('Disconnected from server');
+            updateDetectionStatus('disconnected');
+        });
+
+        socket.on('sentence_update', function(data) {
+            updateCurrentSentence(data.sentence);
+            updateTranslations(data.translations);
+            updateAudioStatus(data.audio_status);
+        });
+
+        socket.on('status', function(data) {
+            console.log('Status:', data.message);
+        });
+
+        // Button event handlers
+        startBtn.addEventListener('click', startDetection);
+        stopBtn.addEventListener('click', stopDetection);
+        forceSentenceBtn.addEventListener('click', forceSentence);
+        clearBtn.addEventListener('click', clearSentences);
+
+        // API functions
+        async function startDetection() {
+            try {
+                const response = await fetch('/api/start_detection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    isDetecting = true;
+                    updateButtons();
+                    updateDetectionStatus('detecting');
+                } else {
+                    alert('Error starting detection: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error starting detection:', error);
+                alert('Error starting detection: ' + error.message);
+            }
+        }
+
+        async function stopDetection() {
+            try {
+                const response = await fetch('/api/stop_detection', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    isDetecting = false;
+                    updateButtons();
+                    updateDetectionStatus('stopped');
+                } else {
+                    alert('Error stopping detection: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error stopping detection:', error);
+                alert('Error stopping detection: ' + error.message);
+            }
+        }
+
+        async function forceSentence() {
+            try {
+                const response = await fetch('/api/force_sentence', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    alert('Error forcing sentence: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error forcing sentence:', error);
+                alert('Error forcing sentence: ' + error.message);
+            }
+        }
+
+        async function clearSentences() {
+            try {
+                const response = await fetch('/api/clear_sentences', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    updateCurrentSentence('');
+                    updateTranslations([]);
+                } else {
+                    alert('Error clearing sentences: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error clearing sentences:', error);
+                alert('Error clearing sentences: ' + error.message);
+            }
+        }
+
+        async function playTTS(translationId) {
+            try {
+                const response = await fetch(`/api/play_tts/${translationId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    alert('Error playing TTS: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error playing TTS:', error);
+                alert('Error playing TTS: ' + error.message);
+            }
+        }
+
+        // UI update functions
+        function updateButtons() {
+            startBtn.disabled = isDetecting;
+            stopBtn.disabled = !isDetecting;
+            forceSentenceBtn.disabled = !isDetecting;
+            clearBtn.disabled = !isDetecting;
+        }
+
+        function updateDetectionStatus(status) {
+            const indicator = detectionStatus.querySelector('.status-indicator');
+            const text = detectionStatus.querySelector('span:last-child');
+            
+            indicator.className = 'status-indicator';
+            
+            switch (status) {
+                case 'connected':
+                    indicator.classList.add('online');
+                    text.textContent = 'Connected to Server';
+                    break;
+                case 'detecting':
+                    indicator.classList.add('processing');
+                    text.textContent = 'Detecting Gestures';
+                    break;
+                case 'stopped':
+                    indicator.classList.add('offline');
+                    text.textContent = 'Camera Stopped';
+                    break;
+                case 'disconnected':
+                    indicator.classList.add('offline');
+                    text.textContent = 'Disconnected';
+                    break;
+            }
+        }
+
+        function updateCurrentSentence(sentence) {
+            if (sentence && sentence.trim()) {
+                currentSentenceDiv.textContent = sentence;
+                currentSentenceDiv.classList.remove('empty');
+            } else {
+                currentSentenceDiv.textContent = 'No sentence being built...';
+                currentSentenceDiv.classList.add('empty');
+            }
+        }
+
+        function updateTranslations(translations) {
+            if (!translations || translations.length === 0) {
+                translationsList.innerHTML = `
+                    <div class="translation-item">
+                        <div class="translation-text">No translations yet</div>
+                        <div class="translation-meta">Start gesturing to see translations</div>
+                    </div>
+                `;
+                return;
+            }
+
+            translationsList.innerHTML = translations.map(trans => {
+                const statusClass = trans.status || 'pending';
+                const statusText = trans.status === 'completed' ? '✅' : 
+                                 trans.status === 'silent' ? '🔇' : 
+                                 trans.status === 'failed' ? '❌' : '⏳';
+                
+                const playButton = trans.status === 'completed' ? 
+                    `<button class="play-btn" onclick="playTTS(${trans.id})">🔊 Play</button>` : 
+                    `<button class="play-btn" disabled>🔊 Play</button>`;
+                
+                return `
+                    <div class="translation-item ${statusClass}">
+                        <div class="translation-text">${statusText} ${trans.translated_text || trans.raw_text || 'Processing...'}</div>
+                        <div class="translation-meta">
+                            <span>ID: ${trans.id}</span>
+                            ${playButton}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateAudioStatus(audioStatus) {
+            if (audioStatus) {
+                audioPlaying.textContent = audioStatus.is_playing ? 'Playing' : 'Not playing';
+                audioQueue.textContent = `${audioStatus.queue_size} items`;
+            }
+        }
+
+        // Request initial update
+        socket.emit('request_update');
+
+        // Request updates every 2 seconds
+        setInterval(() => {
+            if (isDetecting) {
+                socket.emit('request_update');
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

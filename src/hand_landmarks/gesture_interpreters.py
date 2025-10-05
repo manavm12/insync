@@ -381,13 +381,13 @@ class FiveFingerInterpreter(BaseGestureInterpreter):
             if face_ref.get('mouth'):
                 dist_to_mouth = self._calculate_distance_to_face(middle_tip, face_ref['mouth'])
                 if dist_to_mouth < 0.12:  # Very close to mouth
-                    return "THANK YOU (near mouth, motion needed)"
+                    return "THANK YOU"
             
             # Check if hand is near chin/chest area (PLEASE)
             if face_ref.get('chin'):
                 dist_to_chin = self._calculate_distance_to_face(middle_tip, face_ref['chin'])
                 if 0.12 < dist_to_chin < 0.25:  # Between mouth and chest
-                    return "PLEASE (chest area, motion needed)"
+                    return "PLEASE"
             
             # Check if hand is near forehead (HELLO)
             if face_ref.get('forehead'):

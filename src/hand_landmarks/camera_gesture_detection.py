@@ -50,7 +50,7 @@ class RealTimeGestureDetector:
         self.current_sentence = []
         self.last_gesture = None
         self.last_gesture_time = 0
-        self.sentence_timeout = 3.0  # seconds to complete a sentence
+        self.sentence_timeout = 5.0  # seconds to complete a sentence
 
         # Translation queue and results
         self.sentence_queue = deque()

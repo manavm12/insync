@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InSync - Custom Gesture Mappings</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .navigation {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            margin: 0 15px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: rgba(255,255,255,0.4);
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .panel h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .gesture-category {
+            margin-bottom: 25px;
+        }
+
+        .gesture-category h3 {
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .gesture-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .gesture-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .gesture-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .gesture-item.selected {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+
+        .gesture-name {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .gesture-description {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+
+        .custom-mapping {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .custom-mapping .gesture-info {
+            flex: 1;
+        }
+
+        .custom-mapping .gesture-name {
+            font-weight: 600;
+            color: #856404;
+        }
+
+        .custom-mapping .custom-word {
+            color: #856404;
+            font-style: italic;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚙️ InSync Custom Mappings</h1>
+            <p>Map your own words to gesture actions</p>
+        </div>
+
+        <div class="navigation">
+            <a href="/" class="nav-link">📹 Camera</a>
+            <a href="/mappings" class="nav-link active">⚙️ Custom Mappings</a>
+        </div>
+
+        <div class="main-content">
+            <div class="panel">
+                <h2>🎯 Available Gestures</h2>
+                <div id="gestures-container" class="loading">
+                    Loading available gestures...
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>✏️ Create Custom Mapping</h2>
+                
+                <div id="alert-container"></div>
+
+                <div class="form-group">
+                    <label for="selected-gesture">Selected Gesture:</label>
+                    <input type="text" id="selected-gesture" class="form-control" readonly placeholder="Click a gesture from the left panel">
+                </div>
+
+                <div class="form-group">
+                    <label for="custom-word">Your Custom Word/Phrase:</label>
+                    <input type="text" id="custom-word" class="form-control" placeholder="Enter your custom word or phrase">
+                </div>
+
+                <button id="save-mapping-btn" class="btn btn-primary" disabled>💾 Save Mapping</button>
+
+                <hr style="margin: 30px 0; border: none; border-top: 2px solid #e9ecef;">
+
+                <h3>📋 Current Custom Mappings</h3>
+                <div id="custom-mappings-container">
+                    <div class="loading">Loading custom mappings...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let availableGestures = {};
+        let customMappings = {};
+        let selectedGesture = null;
+
+        // DOM elements
+        const gesturesContainer = document.getElementById('gestures-container');
+        const selectedGestureInput = document.getElementById('selected-gesture');
+        const customWordInput = document.getElementById('custom-word');
+        const saveMappingBtn = document.getElementById('save-mapping-btn');
+        const customMappingsContainer = document.getElementById('custom-mappings-container');
+        const alertContainer = document.getElementById('alert-container');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAvailableGestures();
+            loadCustomMappings();
+            
+            // Event listeners
+            saveMappingBtn.addEventListener('click', saveMapping);
+            customWordInput.addEventListener('input', validateForm);
+        });
+
+        // Load available gestures
+        async function loadAvailableGestures() {
+            try {
+                const response = await fetch('/api/gestures');
+                availableGestures = await response.json();
+                renderAvailableGestures();
+            } catch (error) {
+                console.error('Error loading gestures:', error);
+                showAlert('Error loading available gestures', 'danger');
+            }
+        }
+
+        // Load custom mappings
+        async function loadCustomMappings() {
+            try {
+                const response = await fetch('/api/mappings');
+                customMappings = await response.json();
+                renderCustomMappings();
+            } catch (error) {
+                console.error('Error loading custom mappings:', error);
+                showAlert('Error loading custom mappings', 'danger');
+            }
+        }
+
+        // Render available gestures
+        function renderAvailableGestures() {
+            if (!availableGestures || Object.keys(availableGestures).length === 0) {
+                gesturesContainer.innerHTML = '<div class="empty-state"><h3>No gestures available</h3><p>Unable to load gesture data</p></div>';
+                return;
+            }
+
+            let html = '';
+            for (const [category, gestures] of Object.entries(availableGestures)) {
+                if (category === 'Note') continue; // Skip the note section
+                
+                html += `
+                    <div class="gesture-category">
+                        <h3>${category}</h3>
+                        <div class="gesture-list">
+                `;
+                
+                gestures.forEach(gesture => {
+                    const isMapped = customMappings.hasOwnProperty(gesture);
+                    html += `
+                        <div class="gesture-item ${isMapped ? 'mapped' : ''}" onclick="selectGesture('${gesture.replace(/'/g, "\\'")}')">
+                            <div>
+                                <div class="gesture-name">${gesture}</div>
+                                ${isMapped ? `<div class="gesture-description">Mapped to: "${customMappings[gesture]}"</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+            
+            gesturesContainer.innerHTML = html;
+        }
+
+        // Render custom mappings
+        function renderCustomMappings() {
+            const mappings = Object.entries(customMappings);
+            
+            if (mappings.length === 0) {
+                customMappingsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No custom mappings yet</h3>
+                        <p>Select a gesture and create your first custom mapping!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            mappings.forEach(([gesture, customWord]) => {
+                html += `
+                    <div class="custom-mapping">
+                        <div class="gesture-info">
+                            <div class="gesture-name">${gesture}</div>
+                            <div class="custom-word">→ "${customWord}"</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteMapping('${gesture.replace(/'/g, "\\'")}')">🗑️ Delete</button>
+                    </div>
+                `;
+            });
+            
+            customMappingsContainer.innerHTML = html;
+        }
+
+        // Select gesture
+        function selectGesture(gesture) {
+            selectedGesture = gesture;
+            selectedGestureInput.value = gesture;
+            customWordInput.focus();
+            validateForm();
+            
+            // Update visual selection
+            document.querySelectorAll('.gesture-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.target.closest('.gesture-item').classList.add('selected');
+        }
+
+        // Validate form
+        function validateForm() {
+            const isValid = selectedGesture && customWordInput.value.trim();
+            saveMappingBtn.disabled = !isValid;
+        }
+
+        // Save mapping
+        async function saveMapping() {
+            if (!selectedGesture || !customWordInput.value.trim()) {
+                showAlert('Please select a gesture and enter a custom word', 'danger');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/mappings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        [selectedGesture]: customWordInput.value.trim()
+                    })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // Update local data
+                    customMappings[selectedGesture] = customWordInput.value.trim();
+                    
+                    // Clear form
+                    selectedGesture = null;
+                    selectedGestureInput.value = '';
+                    customWordInput.value = '';
+                    saveMappingBtn.disabled = true;
+                    
+                    // Update UI
+                    renderAvailableGestures();
+                    renderCustomMappings();
+                    
+                    showAlert('Custom mapping saved successfully!', 'success');
+                } else {
+                    showAlert('Error saving mapping: ' + result.message, 'danger');
+                }
+            } catch (error) {
+                console.error('Error saving mapping:', error);
+                showAlert('Error saving mapping: ' + error.message, 'danger');
+            }
+        }
+
+        // Delete mapping
+        async function deleteMapping(gesture) {
+            if (!confirm(`Are you sure you want to delete the mapping for "${gesture}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/mappings/${encodeURIComponent(gesture)}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // Update local data
+                    delete customMappings[gesture];
+                    
+                    // Update UI
+                    renderAvailableGestures();
+                    renderCustomMappings();
+                    
+                    showAlert('Custom mapping deleted successfully!', 'success');
+                } else {
+                    showAlert('Error deleting mapping: ' + result.message, 'danger');
+                }
+            } catch (error) {
+                console.error('Error deleting mapping:', error);
+                showAlert('Error deleting mapping: ' + error.message, 'danger');
+            }
+        }
+
+        // Show alert
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            
+            alertContainer.innerHTML = '';
+            alertContainer.appendChild(alertDiv);
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
