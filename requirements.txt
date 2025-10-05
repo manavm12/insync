@@ -2,6 +2,7 @@
 mediapipe==0.10.9
 opencv-python==4.8.1.78
 numpy==1.24.3
+elevenlabs==0.1.5
 
 # AI Translation
 openai>=1.0.0
