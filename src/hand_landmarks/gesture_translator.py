@@ -36,8 +36,8 @@ def fix_sentence(broken_text: str, api_key: Optional[str] = None) -> str:
     # System prompt for text correction
     system_prompt = """
         Context:
-        You are a gesture to English Translator.
-        Your task is to take input sequences of pre-determined gestures (which may include multiple possible translations for each sign) and output a fully spoken English sentence.
+        You are a gesture-to-English Translator.
+        Your task is to take input sequences of pre-determined gestures (which may include multiple possible translations for each sign) and output a fully spoken coherent English sentence.
         You can expect the words to be mapped from common ASL gestures to their English quivalents, and they are part of everyday sentences. 
 
         Rules:

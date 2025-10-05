@@ -102,13 +102,13 @@ class RealTimeGestureDetector:
         self.console_landmark_logging = False  # disable verbose landmark dumps by default
 
         # Gesture smoothing parameters
-        self.gesture_window_size = 14
-        self.gesture_min_consensus = 0.75
-        self.gesture_cooldown_seconds = 0.8
-        self.gesture_transition_min_frames = 5
-        self.gesture_confidence_threshold = 0.75
-        self.gesture_margin_threshold = 0.15
-        self.gesture_pending_hold_seconds = 0.4
+        self.gesture_window_size = 9
+        self.gesture_min_consensus = 0.6
+        self.gesture_cooldown_seconds = 0.5
+        self.gesture_transition_min_frames = 3
+        self.gesture_confidence_threshold = 0.7
+        self.gesture_margin_threshold = 0.12
+        self.gesture_pending_hold_seconds = 0.25
         self.gesture_pending_label = None
         self.gesture_pending_start = 0.0
         self.gesture_history = deque(maxlen=self.gesture_window_size)
